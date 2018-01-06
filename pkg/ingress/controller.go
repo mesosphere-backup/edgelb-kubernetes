@@ -6,6 +6,9 @@ import (
 	"reflect"
 	"time"
 
+	// Ingress controller
+	"github.com/asridharan/edgelb-k8s/pkg/state"
+
 	// RxGo
 	"github.com/reactivex/rxgo/errors"
 	"github.com/reactivex/rxgo/iterable"
@@ -26,29 +29,12 @@ type Controller interface {
 	Start()
 }
 
-// Controller representation of a k8s service. This is primarily required to track the end-points.
-type Service struct {
-	Namespace string
-	Name      string
-	Endpoints []string
-}
-
 type controller struct {
 	si               informers.SharedInformerFactory
-	endpoints        v1.EndpointsLister           // All the endpoints that are availabe in a k8s cluster.
-	ingressResources v1beta1.IngressLister        // Ingress resource that define the config for the controller.
-	services         map[Service]map[VHost]string // Services for which the controller is asked to setup ingress.
-	vhosts           map[string]VHost
-}
-
-type VHost struct {
-	Host   string
-	Routes []Route
-}
-
-type Route struct {
-	Path    string
-	Service ingress.Service
+	endpoints        v1.EndpointsLister        // All the endpoints that are availabe in a k8s cluster.
+	ingressResources v1beta1.IngressLister     // Ingress resource that define the config for the controller.
+	services         map[string]*state.Service // Services for which the controller is asked to setup ingress.
+	vhosts           map[string]*state.VHost
 }
 
 func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error) {
@@ -101,6 +87,7 @@ func (ctrl *controller) ingressCreated(obj interface{}) {
 	ingress, ok := obj.(*V1Beta1api.Ingress)
 	if ok {
 		log.Printf("Expected an object of type `*v1beta1.Ingress`, but got object of type: %s", reflect.TypeOf(obj))
+		return
 	}
 
 	log.Printf("Received an object of type: %s, Obj: %v", reflect.TypeOf(obj), *ingress)
@@ -119,11 +106,11 @@ func (ctrl *controller) ingressCreated(obj interface{}) {
 
 			}
 
-			return ctrl.convertRuleToVHost(namespace, ingressRule)
+			return ctrl.newVHost(namespace, ingressRule)
 		}).Subscribe(observer.Observer{
 		// For every VHost that we get, register it with the load-balancer.
 		NextHandler: func(item interface{}) {
-			log.Printf("Need to register VHOST %v with load-balancer", item.(VHost))
+			log.Printf("Need to register VHOST %v with load-balancer", item.(*state.VHost))
 		},
 	})
 }
@@ -137,43 +124,52 @@ func (ctrl *controller) ingressDeleted(obj interface{}) {
 }
 
 // Takes an `IngressRule`  and converts it to a corresponding `Route` object.
-func (ctrl *controller) convertRuleToVHost(namespace string, rule *V1Beta1api.IngressRule) (vhost VHost) {
-	vhost.host = rule.Host
+func (ctrl *controller) newVHost(namespace string, rule *V1Beta1api.IngressRule) (vhost *state.VHost) {
+	vhost.Host = rule.Host
 
 	for _, path := range rule.HTTP.Paths {
-		vhost.routes = append(vhost.routes, ctrl.convertPathToRoute(namespace, path))
+		url := state.URL{Host: rule.Host, Path: path.Path}
+		id := state.ServiceName{Namespace: namespace, Name: path.Backend.ServiceName}
+		var service *state.Service
+		// Store the association of the service with the URI
+		if _, ok := ctrl.services[service.String()]; !ok {
+			ctrl.services[id.String()] = &state.Service{ServiceName: id}
+		}
+		service = ctrl.services[id.String()]
+		service.URLs = append(service.URLs, url)
+
+		ctrl.updateServiceEndpoints(service)
+
+		// Append the route to the VHost.
+		vhost.Routes = append(vhost.Routes, state.Route{Path: url.Path, ServiceName: id})
 	}
+
+	ctrl.vhosts[vhost.Host] = vhost
 
 	return vhost
 }
 
 // Takes a `Path` and converts it to Route.
-func (ctrl *controller) convertPathToRoute(namespace string, path V1Beta1api.HTTPIngressPath) (route Route) {
-	route.path = path.Path
-	route.Service = Service{namespace: namespace, name: path.Backend.ServiceName}
-
-	// Register the service name with the controller.
-	ctrl.services[route.Service] = true
-
+func (ctrl *controller) updateServiceEndpoints(service *state.Service) {
 	// Look at the service name, and get the corresponding endpoints for this service name.
-	endpoints, err := ctrl.endpoints.Endpoints(namespace).Get(path.Backend.ServiceName)
+	endpoints, err := ctrl.endpoints.Endpoints(service.Namespace).Get(service.Name)
 	if err != nil {
 		for _, endpoint := range endpoints.Subsets {
 			for _, address := range endpoint.Addresses {
 				for _, port := range endpoint.Ports {
-					route.endpoints = append(route.endpoints, fmt.Sprintf("%s:%d", address.IP, port.Port))
+					service.Endpoints = append(service.Endpoints, fmt.Sprintf("%s:%d", address.IP, port.Port))
 				}
 			}
 
 			for _, address := range endpoint.NotReadyAddresses {
 				for _, port := range endpoint.Ports {
-					route.endpoints = append(route.endpoints, fmt.Sprintf("%s:%d", address.IP, port.Port))
+					service.Endpoints = append(service.Endpoints, fmt.Sprintf("%s:%d", address.IP, port.Port))
 				}
 			}
 
 		}
 	} else {
-		log.Printf("Unable to retrieve the endpoints:%s/%s, error:%s", namespace, path.Backend.ServiceName, err)
+		log.Printf("Unable to retrieve the endpoints for service:%s, error:%s", *service, err)
 	}
 
 	return
