@@ -45,6 +45,8 @@ func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error)
 		si:               si,
 		endpoints:        si.Core().V1().Endpoints().Lister(),
 		ingressResources: si.Extensions().V1beta1().Ingresses().Lister(),
+		services:         make(map[string]*state.Service),
+		vhosts:           make(map[string]*state.VHost),
 	}
 
 	ctrl = &ingressCtrl
@@ -115,6 +117,9 @@ func (ctrl *controller) ingressCreated(obj interface{}) {
 	})
 }
 
+func (ctrl *controller) ingressUpdated(old interface{}, new interface{}) {
+}
+
 func (ctrl *controller) ingressDeleted(obj interface{}) {
 	ingress, ok := obj.(*V1Beta1api.Ingress)
 	if ok {
@@ -125,7 +130,11 @@ func (ctrl *controller) ingressDeleted(obj interface{}) {
 
 // Takes an `IngressRule`  and converts it to a corresponding `Route` object.
 func (ctrl *controller) newVHost(namespace string, rule *V1Beta1api.IngressRule) (vhost *state.VHost) {
-	vhost.Host = rule.Host
+	// If a VHost already exists delete it since we will be re-creating it here.
+	if _, ok := ctrl.vhosts[rule.Host]; ok {
+		delete(ctrl.vhosts, rule.Host)
+	}
+	vhost = &state.VHost{Host: rule.Host}
 
 	for _, path := range rule.HTTP.Paths {
 		url := state.URL{Host: rule.Host, Path: path.Path}
@@ -149,8 +158,12 @@ func (ctrl *controller) newVHost(namespace string, rule *V1Beta1api.IngressRule)
 	return vhost
 }
 
-// Takes a `Path` and converts it to Route.
+// Takes a `Service` and Updates the endpoints of the service.
 func (ctrl *controller) updateServiceEndpoints(service *state.Service) {
+	// Since we might actually be adding existing endpoints to the service,
+	// remove the existing endpoints from the service before adding new ones.
+	service.Endpoints = nil
+
 	// Look at the service name, and get the corresponding endpoints for this service name.
 	endpoints, err := ctrl.endpoints.Endpoints(service.Namespace).Get(service.Name)
 	if err != nil {
