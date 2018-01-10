@@ -38,26 +38,41 @@ type Operation struct {
 	Op int
 }
 
-type IngressMsg struct {
+type k8sIngressMsg struct {
+	Op      Operation
+	Ingress V1Beta1api.Ingress
+}
+
+type k8sServiceMsg struct {
+	Op      Operation
+	Service V1api.Service
+}
+
+type k8sEndpointsMsg struct {
+	Op        Operation
+	Endpoints V1api.Endpoints
+}
+
+type ingressRuleMsg struct {
 	Op          Operation
 	Namespace   string
 	IngressRule V1Beta1api.IngressRule
 }
 
-// Used to add/del/update a `state.VHost` on this controller.
-type VHostMsg struct {
-	Op    Operation
-	VHost state.VHost
+// Used to add/del/update a `Host` on this controller.
+type hostMsg struct {
+	Op   Operation
+	Host string
 }
 
 // Used to add/del/update a `state.Service` on this controller.
-type ServiceMsg struct {
+type serviceMsg struct {
 	Op      Operation
 	Service state.ServiceName
 }
 
 // Used to add/del/update a service endpoint on this controller.
-type EndpointMsg struct {
+type endpointMsg struct {
 	Op       Operation
 	Service  state.ServiceName
 	Endpoint string
@@ -74,6 +89,10 @@ type controller struct {
 	ingressResources v1beta1.IngressLister     // Ingress resource that define the config for the controller.
 	services         map[string]*state.Service // Services for which the controller is asked to setup ingress.
 	vhosts           map[string]*state.VHost
+	//Observable channels
+	ingressMsgs   chan k8sIngressMsg
+	serviceMsgs   chan k8sServiceMsg
+	endpointsMsgs chan k8sEndpointsMsg
 }
 
 func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error) {
@@ -86,6 +105,9 @@ func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error)
 		ingressResources: si.Extensions().V1beta1().Ingresses().Lister(),
 		services:         make(map[string]*state.Service),
 		vhosts:           make(map[string]*state.VHost),
+		ingressMsgs:      make(chan k8sIngressMsg),
+		serviceMsgs:      make(chan k8sServiceMsg),
+		endpointsMsgs:    make(chan k8sEndpointsMsg),
 	}
 
 	ctrl = &ingressCtrl
@@ -93,11 +115,24 @@ func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error)
 	// Add watchers for endpoints.
 	si.Core().V1().Endpoints().Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
-			AddFunc: ingressCtrl.endpointCreateUpdateAndDelete,
-			UpdateFunc: func(old interface{}, new interface{}) {
-				ingressCtrl.endpointCreateUpdateAndDelete(new)
+			AddFunc: func(obj interface{}) {
+				ingressCtrl.endpointsMsgs <- k8sEndpointsMsg{
+					Op:        Operation{Op: ADD},
+					Endpoints: *(obj.(*V1api.Endpoints)),
+				}
 			},
-			DeleteFunc: ingressCtrl.endpointCreateUpdateAndDelete,
+			UpdateFunc: func(old interface{}, new interface{}) {
+				ingressCtrl.endpointsMsgs <- k8sEndpointsMsg{
+					Op:        Operation{Op: UPDATE},
+					Endpoints: *(new.(*V1api.Endpoints)),
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				ingressCtrl.endpointsMsgs <- k8sEndpointsMsg{
+					Op:        Operation{Op: DEL},
+					Endpoints: *(obj.(*V1api.Endpoints)),
+				}
+			},
 		},
 	)
 
@@ -105,13 +140,22 @@ func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error)
 	si.Core().V1().Services().Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
 			AddFunc: func(obj interface{}) {
-				ingressCtrl.serviceCreateUpdateAndDelete(obj, Operation{Op: ADD})
+				ingressCtrl.serviceMsgs <- k8sServiceMsg{
+					Op:      Operation{Op: ADD},
+					Service: *(obj.(*V1api.Service)),
+				}
 			},
 			UpdateFunc: func(old interface{}, new interface{}) {
-				ingressCtrl.serviceCreateUpdateAndDelete(new, Operation{Op: UPDATE})
+				ingressCtrl.serviceMsgs <- k8sServiceMsg{
+					Op:      Operation{Op: UPDATE},
+					Service: *(new.(*V1api.Service)),
+				}
 			},
 			DeleteFunc: func(obj interface{}) {
-				ingressCtrl.serviceCreateUpdateAndDelete(obj, Operation{Op: DEL})
+				ingressCtrl.serviceMsgs <- k8sServiceMsg{
+					Op:      Operation{Op: DEL},
+					Service: *(obj.(*V1api.Service)),
+				}
 			},
 		},
 	)
@@ -119,13 +163,42 @@ func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error)
 	// Add watchers for ingress
 	si.Extensions().V1beta1().Ingresses().Informer().AddEventHandler(
 		cache.ResourceEventHandlerFuncs{
-			AddFunc: ingressCtrl.ingressCreateAndUpdate,
-			UpdateFunc: func(old interface{}, new interface{}) {
-				ingressCtrl.ingressCreateAndUpdate(new)
+			AddFunc: func(obj interface{}) {
+				ingressCtrl.ingressMsgs <- k8sIngressMsg{
+					Op:      Operation{Op: ADD},
+					Ingress: *(obj.(*V1Beta1api.Ingress)),
+				}
 			},
-			DeleteFunc: ingressCtrl.ingressDeleted,
+			UpdateFunc: func(old interface{}, new interface{}) {
+				ingressCtrl.ingressMsgs <- k8sIngressMsg{
+					Op:      Operation{Op: UPDATE},
+					Ingress: *(new.(*V1Beta1api.Ingress)),
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				ingressCtrl.ingressMsgs <- k8sIngressMsg{
+					Op:      Operation{Op: DEL},
+					Ingress: *(obj.(*V1Beta1api.Ingress)),
+				}
+			},
 		},
 	)
+
+	// Setup observers so that we can process the different k8s messages we are
+	// interested in.
+	sink := observer.Observer{
+		NextHandler: func(item interface{}) {
+			ingressCtrl.pid.Tell(&item)
+		},
+	}
+
+	k8sIngressSource, _ := iterable.New(ingressCtrl.ingressMsgs)
+	k8sServiceSource, _ := iterable.New(ingressCtrl.serviceMsgs)
+	k8sEndpointsSource, _ := iterable.New(ingressCtrl.endpointsMsgs)
+
+	observable.From(k8sIngressSource).Subscribe(sink)
+	observable.From(k8sServiceSource).Subscribe(sink)
+	observable.From(k8sEndpointsSource).Subscribe(sink)
 
 	return
 }
@@ -141,25 +214,68 @@ func (ctrl *controller) Start() {
 
 func (ctrl *controller) Receive(ctx actor.Context) {
 	switch ctx.Message().(type) {
-	case *IngressMsg:
-		ingressMsg, _ := ctx.Message().(*IngressMsg)
+	case *k8sIngressMsg:
+		ingressMsg, _ := ctx.Message().(*k8sIngressMsg)
 		switch operation := ingressMsg.Op.Op; operation {
 		case ADD, UPDATE:
-			ctrl._ingressCreateAndUpdate(ingressMsg.Namespace, ingressMsg.IngressRule)
+			ctrl.ingressCreateAndUpdate(ingressMsg.Ingress)
 		case DEL:
-			ctrl._ingressDeleted(ingressMsg.Namespace, ingressMsg.IngressRule)
+			ctrl.ingressDeleted(ingressMsg.Ingress)
 		default:
-			log.Printf("Undefined operation %d requested on `IngressMsg`", operation)
+			log.Printf("Undefined operation %d requested on `k8sIngressMsg`", operation)
 		}
-	case *ServiceMsg:
-		serviceMsg, _ := ctx.Message().(*ServiceMsg)
-		switch operation := serviceMsg.Op.Op; operation {
+	case *ingressRuleMsg:
+		ingressRuleMsg, _ := ctx.Message().(*ingressRuleMsg)
+		switch operation := ingressRuleMsg.Op.Op; operation {
 		case ADD, UPDATE:
-			ctrl.updateServiceEndpoints(serviceMsg.Service)
+			host := ctrl.ingressRuleCreateAndUpdate(ingressRuleMsg.Namespace, ingressRuleMsg.IngressRule)
+			// Tell the controller to process this host.
+			ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, Host: host})
 		case DEL:
-			ctrl.deleteService(serviceMsg.Service)
+			host := ctrl.ingressRuleDeleted(ingressRuleMsg.Namespace, ingressRuleMsg.IngressRule)
+			// Tell the controller to delete this host.
+			ctrl.pid.Tell(&hostMsg{Op: Operation{Op: DEL}, Host: host})
 		default:
-			log.Printf("Undefined operation %d requested on `IngressMsg`", operation)
+			log.Printf("Undefined operation %d requested on `IngressRuleMsg`", operation)
+		}
+	case *k8sServiceMsg, *k8sEndpointsMsg:
+		var id state.ServiceName
+		var op Operation
+		switch ctx.Message().(type) {
+		case *k8sServiceMsg:
+			service := (ctx.Message().(*k8sServiceMsg)).Service
+			id = state.ServiceName{Namespace: service.GetNamespace(), Name: service.GetName()}
+			op = (ctx.Message().(*k8sServiceMsg)).Op
+		case *k8sEndpointsMsg:
+			endpoints := (ctx.Message().(*k8sEndpointsMsg)).Endpoints
+			id = state.ServiceName{Namespace: endpoints.GetNamespace(), Name: endpoints.GetName()}
+			op = (ctx.Message().(*k8sEndpointsMsg)).Op
+		}
+		switch op.Op {
+		case ADD, UPDATE:
+			hosts := ctrl.updateServiceEndpoints(id)
+			for _, host := range hosts {
+				// Tell the controller to process this host.
+				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, Host: host})
+			}
+		case DEL:
+			hosts := ctrl.deleteService(id)
+			for _, host := range hosts {
+				// Tell the controller to delete this host.
+				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: DEL}, Host: host})
+			}
+		default:
+			log.Printf("Undefined operation %d requested on `k8ServiceMsg/k8sEndpointsMsg`", op)
+		}
+	case *hostMsg:
+		hostMsg, _ := ctx.Message().(*hostMsg)
+		switch operation := hostMsg.Op.Op; operation {
+		case ADD, UPDATE:
+			log.Printf("Will send update for host:%s to the load-balancer", hostMsg.Host)
+		case DEL:
+			log.Printf("Will delete host:%s from the load-balancer", hostMsg.Host)
+		default:
+			log.Printf("Undefined operation %d requested on `k8ServiceMsg/k8sEndpointsMsg`", operation)
 		}
 	default:
 		log.Printf("Unsopported message received by %s", ctrl.pid)
@@ -178,7 +294,7 @@ func (ctrl *controller) endpointCreateUpdateAndDelete(obj interface{}) {
 		Namespace: endpoint.GetNamespace(),
 	}
 
-	serviceMsg := &ServiceMsg{Op: Operation{Op: UPDATE}, Service: service}
+	serviceMsg := &serviceMsg{Op: Operation{Op: UPDATE}, Service: service}
 
 	// We won't do anything specific to this endpoint. We will just ask the Service to recreate all the endpoints
 	// belonging to this service if the service is actually being exposed.
@@ -197,7 +313,7 @@ func (ctrl *controller) serviceCreateUpdateAndDelete(obj interface{}, Op Operati
 		Namespace: service.GetNamespace(),
 	}
 
-	serviceMsg := &ServiceMsg{Op: Op, Service: id}
+	serviceMsg := &serviceMsg{Op: Op, Service: id}
 
 	// We won't do anything specific to this endpoint. We will just ask the Service to recreate all the endpoints
 	// belonging to this service if the service is actually being exposed.
@@ -205,15 +321,7 @@ func (ctrl *controller) serviceCreateUpdateAndDelete(obj interface{}, Op Operati
 
 }
 
-func (ctrl *controller) ingressCreateAndUpdate(obj interface{}) {
-	ingress, ok := obj.(*V1Beta1api.Ingress)
-	if !ok {
-		log.Printf("Expected an object of type `*v1beta1.Ingress`, but got object of type: %s", reflect.TypeOf(obj))
-		return
-	}
-
-	log.Printf("Received an object of type: %s, Obj: %v", reflect.TypeOf(obj), *ingress)
-
+func (ctrl *controller) ingressCreateAndUpdate(ingress V1Beta1api.Ingress) {
 	namespace := ingress.GetNamespace()
 
 	it, _ := iterable.New(ingress.Spec.Rules)
@@ -224,7 +332,7 @@ func (ctrl *controller) ingressCreateAndUpdate(obj interface{}) {
 		NextHandler: func(item interface{}) {
 			ingressRule := item.(*V1Beta1api.IngressRule)
 			// Ask the controller to process this rule.
-			ctrl.pid.Tell(&IngressMsg{
+			ctrl.pid.Tell(&ingressRuleMsg{
 				Op:          Operation{Op: ADD},
 				Namespace:   namespace,
 				IngressRule: *ingressRule})
@@ -232,13 +340,7 @@ func (ctrl *controller) ingressCreateAndUpdate(obj interface{}) {
 	})
 }
 
-func (ctrl *controller) ingressDeleted(obj interface{}) {
-	ingress, ok := obj.(*V1Beta1api.Ingress)
-	if ok {
-		log.Printf("Expected an object of type `*v1beta1.Ingress`, but got object of type: %s", reflect.TypeOf(obj))
-	}
-	log.Printf("Received an object of type: %s, Obj: %v", reflect.TypeOf(obj), *ingress)
-
+func (ctrl *controller) ingressDeleted(ingress V1Beta1api.Ingress) {
 	it, _ := iterable.New(ingress.Spec.Rules)
 
 	// Process all the rules.
@@ -247,7 +349,7 @@ func (ctrl *controller) ingressDeleted(obj interface{}) {
 		NextHandler: func(item interface{}) {
 			ingressRule := item.(*V1Beta1api.IngressRule)
 			// Ask the controller to process this rule.
-			ctrl.pid.Tell(&IngressMsg{
+			ctrl.pid.Tell(&ingressRuleMsg{
 				Op:          Operation{Op: DEL},
 				Namespace:   ingress.GetNamespace(),
 				IngressRule: *ingressRule})
@@ -256,7 +358,8 @@ func (ctrl *controller) ingressDeleted(obj interface{}) {
 }
 
 // Create a `VHost` based on an `IngressRule`.
-func (ctrl *controller) _ingressCreateAndUpdate(namespace string, rule V1Beta1api.IngressRule) {
+// Returns the host added/deleted in this updated.
+func (ctrl *controller) ingressRuleCreateAndUpdate(namespace string, rule V1Beta1api.IngressRule) (host string) {
 	// If a VHost already exists delete it since we will be re-creating it here.
 	if _, ok := ctrl.vhosts[rule.Host]; ok {
 		delete(ctrl.vhosts, rule.Host)
@@ -284,11 +387,16 @@ func (ctrl *controller) _ingressCreateAndUpdate(namespace string, rule V1Beta1ap
 
 	ctrl.vhosts[vhost.Host] = vhost
 
+	host = vhost.Host
+
 	return
 }
 
 // Delete a `Vhost` based on an IngressRule.
-func (ctrl *controller) _ingressDeleted(namespace string, rule V1Beta1api.IngressRule) {
+// Returns the `host` that got deleted.
+func (ctrl *controller) ingressRuleDeleted(namespace string, rule V1Beta1api.IngressRule) (host string) {
+	host = rule.Host
+
 	// If a VHost already exists delete it since we will be re-creating it here.
 	if _, ok := ctrl.vhosts[rule.Host]; ok {
 		delete(ctrl.vhosts, rule.Host)
@@ -298,19 +406,18 @@ func (ctrl *controller) _ingressDeleted(namespace string, rule V1Beta1api.Ingres
 		url := state.URL{Host: rule.Host, Path: path.Path}
 		id := state.ServiceName{Namespace: namespace, Name: path.Backend.ServiceName}
 		service, ok := ctrl.services[id.String()]
-		// Store the association of the service with the URI
-		if !ok {
-			return
+		// Delete any association of the service with this host
+		if ok {
+			delete(service.URLs, url.String())
 		}
-
-		delete(service.URLs, url.String())
 	}
 
 	return
 }
 
 // Takes a `Service` and updates the endpoints of the service.
-func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) {
+// Returns the affected vhosts.
+func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []string) {
 	service, ok := ctrl.services[id.String()]
 
 	if !ok {
@@ -353,18 +460,26 @@ func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) {
 		log.Printf("Unable to retrieve the endpoints for service:%s, error:%s", *service, err)
 	}
 
+	for vhost, _ := range service.URLs {
+		host = append(host, vhost)
+	}
+
 	return
 }
 
-func (ctrl *controller) deleteService(id state.ServiceName) {
-	_, ok := ctrl.services[id.String()]
+func (ctrl *controller) deleteService(id state.ServiceName) (host []string) {
+	service, ok := ctrl.services[id.String()]
 
 	if !ok {
 		// We don't have a VHost corresponding to this servcie so we don't need to do anything.
 		return
 	}
 
+	for vhost, _ := range service.URLs {
+		host = append(host, vhost)
+	}
+
 	delete(ctrl.services, id.String())
 
-	//TODO: Need to send the service update down to the load-balancer for the load-balacner to update its backend for a given VHOST.
+	return
 }
