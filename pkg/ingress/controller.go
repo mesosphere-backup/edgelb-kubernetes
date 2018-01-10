@@ -422,6 +422,7 @@ func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []str
 
 	if !ok {
 		// We don't have a VHost corresponding to this servcie so we don't need to do anything.
+		log.Printf("Found a service(%s) that is not part of any ingress reousrce, hence skipping", id)
 		return
 	}
 
