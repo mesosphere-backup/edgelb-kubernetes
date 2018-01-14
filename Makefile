@@ -1,5 +1,7 @@
 all:edgelb_controller
 
+.PHONY: vendor
+
 clean:
 	rm -rf edgelb_controller
 
