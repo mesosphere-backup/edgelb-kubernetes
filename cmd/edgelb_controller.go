@@ -67,7 +67,13 @@ func externalClient() (clientset *kubernetes.Clientset) {
 }
 
 func main() {
-	clientset := externalClient()
+	var clientset *kubernetes.Clientset
+	internalPtr := flag.Bool("internal", false, "Internal to the k8s cluster")
+	if !*internalPtr {
+		clientset = externalClient()
+	} else {
+		clientset = internalClient()
+	}
 
 	ctrl, err := ingress.NewController(clientset)
 	if err != nil {
