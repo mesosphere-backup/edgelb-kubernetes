@@ -22,10 +22,26 @@ import (
 
 	"github.com/asridharan/edgelb-k8s/pkg/ingress"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 )
 
-func main() {
+func internalClient() (clientset *kubernetes.Clientset) {
+	// creates the in-cluster config
+	config, err := rest.InClusterConfig()
+	if err != nil {
+		panic(err.Error())
+	}
+	// creates the clientset
+	clientset, err = kubernetes.NewForConfig(config)
+	if err != nil {
+		panic(err.Error())
+	}
+
+	return
+}
+
+func externalClient() (clientset *kubernetes.Clientset) {
 	var kubeconfig *string
 	if home := homeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -42,10 +58,16 @@ func main() {
 	}
 
 	// create the clientset
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err = kubernetes.NewForConfig(config)
 	if err != nil {
 		panic(err.Error())
 	}
+
+	return
+}
+
+func main() {
+	clientset := externalClient()
 
 	ctrl, err := ingress.NewController(clientset)
 	if err != nil {
