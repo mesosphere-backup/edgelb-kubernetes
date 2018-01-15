@@ -10,7 +10,7 @@ import (
 	"github.com/AsynkronIT/protoactor-go/actor"
 
 	// Ingress controller
-	"github.com/asridharan/edgelb-k8s/pkg/state"
+	"edgelb-k8s/pkg/state"
 
 	// RxGo
 	"github.com/reactivex/rxgo/iterable"

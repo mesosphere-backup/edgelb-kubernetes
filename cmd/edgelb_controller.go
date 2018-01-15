@@ -20,7 +20,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/asridharan/edgelb-k8s/pkg/ingress"
+	"edgelb-k8s/pkg/ingress"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -28,6 +28,7 @@ import (
 
 func internalClient() (clientset *kubernetes.Clientset) {
 	// creates the in-cluster config
+	log.Printf("Creating the config for connecting to the API server from within the cluster")
 	config, err := rest.InClusterConfig()
 	if err != nil {
 		panic(err.Error())
@@ -69,6 +70,9 @@ func externalClient() (clientset *kubernetes.Clientset) {
 func main() {
 	var clientset *kubernetes.Clientset
 	internalPtr := flag.Bool("internal", false, "Internal to the k8s cluster")
+
+	flag.Parse()
+
 	if !*internalPtr {
 		clientset = externalClient()
 	} else {
