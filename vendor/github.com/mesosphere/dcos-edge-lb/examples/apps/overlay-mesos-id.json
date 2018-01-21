@@ -1,0 +1,31 @@
+{
+  "id": "/overlay-mesos-id",
+  "instances": 1,
+  "container": {
+    "type": "MESOS",
+    "volumes": [],
+    "docker": {
+      "image": "nlsun/id-server:2.1.0"
+    },
+    "portMappings": [
+      {
+        "containerPort": 8000,
+        "protocol": "tcp",
+        "name": "id"
+      }
+    ]
+  },
+  "cpus": 0.1,
+  "mem": 32,
+  "requirePorts": false,
+  "networks": [
+    {
+      "mode": "container",
+      "network": "dcos"
+    }
+  ],
+  "healthChecks": [],
+  "fetch": [],
+  "constraints": [],
+  "cmd": "/start 8000"
+}

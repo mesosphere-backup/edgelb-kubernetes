@@ -1,0 +1,91 @@
+{
+  "info": {
+    "name": "edgelb-pool-0-server",
+    "discovery": {
+      "visibility": "FRAMEWORK",
+      "name": "edgelb-pool-0-server",
+      "environment": null,
+      "location": null,
+      "version": null,
+      "ports": {
+        "ports": [
+          {
+            "number": 9090,
+            "name": "p9090",
+            "protocol": "tcp",
+            "visibility": null,
+            "labels": null
+          },
+          {
+            "number": 80,
+            "name": "p80",
+            "protocol": "tcp",
+            "visibility": null,
+            "labels": null
+          },
+          {
+            "number": 8882,
+            "name": "p8882",
+            "protocol": "tcp",
+            "visibility": null,
+            "labels": null
+          },
+          {
+            "number": 443,
+            "name": "p443",
+            "protocol": "tcp",
+            "visibility": null,
+            "labels": null
+          },
+          {
+            "number": 800,
+            "name": "p800",
+            "protocol": "tcp",
+            "visibility": null,
+            "labels": null
+          }
+        ]
+      },
+      "labels": null
+    },
+    "executor": {
+      "frameworkId": {
+        "value": ""
+      }
+    }
+  },
+  "status": {
+    "containerStatus": {
+      "containerId": {
+        "value": "556d378a-3fbb-403f-b1b8-d2b0b408c0bf",
+        "parent": null
+      },
+      "networkInfos": [
+        {
+          "ipAddresses": [
+            {
+              "protocol": null,
+              "ipAddress": "172.17.0.4"
+            }
+          ],
+          "name": null,
+          "groups": [],
+          "labels": null,
+          "portMappings": []
+        }
+      ],
+      "cgroupInfo": null,
+      "executorPid": 4676
+    },
+    "taskId": {
+      "value": "edgelb-pool-0-server__b8cdd49d-c4fb-413d-96e3-64a200489b6c"
+    },
+    "slaveId": {
+      "value": "d6cd08c8-8ed9-477a-9783-7a0d55d46eb7-S1"
+    },
+    "executorId": {
+      "value": "edgelb-pool__791a5043-9abb-4996-94d5-63751087b1d6"
+    },
+    "state": "TASK_RUNNING"
+  }
+}

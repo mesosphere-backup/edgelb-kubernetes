@@ -1,0 +1,54 @@
+{
+    "pools": [{
+        "name": "test-http-pool",
+        "count": 1,
+        "haproxy": {
+            "frontends": [{
+                "bindPort": 80,
+                "protocol": "HTTP",
+                "linkBackend": {
+                    "defaultBackend": "bridge-nginx",
+                    "map": [{
+                        "pathBeg": "/httpd/",
+                        "backend": "host-httpd"
+                    }]
+                }
+            }],
+            "backends": [{
+                "name": "host-httpd",
+                "protocol": "HTTP",
+                "rewriteHttp": {
+                    "path": {
+                        "fromPath": "/httpd/",
+                        "toPath": "/"
+                    }
+                },
+                "servers": [{
+                    "framework": {
+                        "value": "marathon"
+                    },
+                    "task": {
+                        "value": "host-httpd"
+                    },
+                    "port": {
+                        "name": "web"
+                    }
+                }]
+            },{
+                "name": "bridge-nginx",
+                "protocol": "HTTP",
+                "servers": [{
+                    "framework": {
+                        "value": "marathon"
+                    },
+                    "task": {
+                        "value": "bridge-nginx"
+                    },
+                    "port": {
+                        "name": "web"
+                    }
+                }]
+            }]
+        }
+    }]
+}

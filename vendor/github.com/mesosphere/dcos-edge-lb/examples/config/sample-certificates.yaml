@@ -1,0 +1,46 @@
+---
+pools:
+  - name: sample-certificates
+    count: 1
+    autoCertificate: true
+    secrets:
+      - secret: mysecret
+        file: mysecretfile
+    environmentVariables:
+      ELB_FILE_HAPROXY_CERT: |
+        -----BEGIN CERTIFICATE-----
+        foo
+        -----END CERTIFICATE-----
+        -----BEGIN RSA PRIVATE KEY-----
+        bar
+        -----END RSA PRIVATE KEY-----
+    haproxy:
+      frontends:
+        - bindPort: 443
+          protocol: HTTPS
+          certificates:
+            - $AUTOCERT
+          linkBackend:
+            defaultBackend: host-httpd
+        - bindPort: 444
+          protocol: HTTPS
+          certificates:
+            - $SECRETS/mysecretfile
+          linkBackend:
+            defaultBackend: host-httpd
+        - bindPort: 445
+          protocol: HTTPS
+          certificates:
+            - $ENVFILE/ELB_FILE_HAPROXY_CERT
+          linkBackend:
+            defaultBackend: host-httpd
+      backends:
+        - name: host-httpd
+          protocol: HTTP
+          servers:
+            - framework:
+                value: marathon
+              task:
+                value: host-httpd
+              port:
+                name: web

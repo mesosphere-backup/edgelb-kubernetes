@@ -1,0 +1,38 @@
+{
+    "pools": [{
+        "name": "test-https-pool",
+        "count": 1,
+        "autoCertificate": true,
+        "haproxy": {
+            "stats": {
+                "bindPort": 9091
+            },
+            "frontends": [{
+                "bindPort": 443,
+                "protocol": "HTTPS",
+                "certificates": [
+                    "$AUTOCERT"
+                ],
+                "linkBackend": {
+                    "defaultBackend": "host-httpd"
+                }
+            }]
+            ,
+            "backends": [{
+                "name": "host-httpd",
+                "protocol": "HTTP",
+                "servers": [{
+                    "framework": {
+                        "value": "marathon"
+                    },
+                    "task": {
+                        "value": "host-httpd"
+                    },
+                    "port": {
+                        "name": "web"
+                    }
+                }]
+            }]
+        }
+    }]
+}

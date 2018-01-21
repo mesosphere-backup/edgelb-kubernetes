@@ -1,0 +1,4 @@
+.dockerized
+.pushed
+lbmgr_linux_amd64
+containerfiles/haproxy/bin/lbmgr

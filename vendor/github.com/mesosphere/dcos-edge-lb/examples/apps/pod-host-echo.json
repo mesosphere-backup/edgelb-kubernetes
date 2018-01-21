@@ -1,0 +1,53 @@
+{
+  "id": "/pod-host-echo-unused-podname",
+  "containers": [
+    {
+      "name": "pod-host-echo",
+      "resources": {
+        "cpus": 0.1,
+        "mem": 32
+      },
+      "image": {
+        "id": "nlsun/echo-http",
+        "kind": "DOCKER"
+      },
+      "endpoints": [
+        {
+          "name": "web",
+          "hostPort": 0,
+          "protocol": [
+            "tcp"
+          ]
+        }
+      ],
+      "healthCheck": {
+        "http": {
+          "scheme": "HTTP",
+          "endpoint": "web",
+          "path": "/"
+        }
+      },
+      "exec": {
+        "command": {
+          "shell": "/start $ENDPOINT_WEB"
+        }
+      }
+    }
+  ],
+  "scaling": {
+    "instances": 1,
+    "kind": "fixed"
+  },
+  "networks": [
+    {
+      "mode": "host"
+    }
+  ],
+  "volumes": [],
+  "fetch": [],
+  "scheduling": {
+    "placement": {
+      "constraints": []
+    }
+  }
+}

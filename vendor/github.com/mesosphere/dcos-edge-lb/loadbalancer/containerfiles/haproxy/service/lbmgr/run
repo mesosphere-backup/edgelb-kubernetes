@@ -1,0 +1,17 @@
+#!/bin/bash
+set -euo pipefail
+
+log() {
+    msg="$1"
+
+    logline="[$(pwd) $0] $msg\n"
+
+    printf "$logline" >&1
+    printf "$logline" >&2
+}
+
+### main ###
+
+log "starting lbmgr"
+
+exec "$LBWORKDIR/haproxy/bin/lbmgr" run

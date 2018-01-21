@@ -1,0 +1,56 @@
+#!/bin/bash
+set -euo pipefail
+
+# XXX: Write a test that checks that the template renders the same way
+#  when non-relevant information is changed in mesos/config. This
+#  manifested as a bug where a debug comment in here printed out the
+#  contents of a struct. However, as the ordering is not guaranteed,
+#  this actually caused a constant re-rendering of the template and
+#  thus reloading of HAProxy. Bad.
+
+log() {
+    msg="$1"
+
+    logline="[$(pwd) $0] $msg\n"
+
+    printf "$logline" >&1
+    printf "$logline" >&2
+}
+
+log "starting"
+
+# Local
+: ${PORT0:=52978}
+: ${APIS_HOST:="127.0.0.1"}
+: ${APIS_PORT:=$PORT0}
+: ${APIS_URL:="http://$APIS_HOST:$APIS_PORT"}
+: ${APIS_READY_URL:="$APIS_URL/ping"}
+: ${APIS_CONFIG_URL:="$APIS_URL/config"}
+: ${MESOS_LISTENER_ADDR:="127.0.0.1:3535"}
+: ${LBWORKDIR:="/dcosfiles"}
+: ${ELB_CFGCACHE_FILENAME:="cfgcache.json"}
+: ${ELB_CFGCACHE_FILE:="$LBWORKDIR/$ELB_CFGCACHE_FILENAME"}
+
+# Exported
+export ELB_CFGCACHE_FILE
+
+log "waiting for api server to come alive, checking $APIS_READY_URL"
+until $(curl -k --output /dev/null --silent --fail $APIS_READY_URL); do
+    sleep 1
+done
+log "api server is up"
+
+POOLS=$(curl -k -Ss $APIS_CONFIG_URL | jq -r '.pools[].name')
+EXEC_ARGS="$LBWORKDIR/apiserver/bin/dcos-template -log-level=debug -mesos $MESOS_LISTENER_ADDR"
+log $EXEC_ARGS  1>&2
+log "Found pools: ${POOLS}"
+
+for name in $POOLS; do
+    TMPL="$LBWORKDIR/haproxy.$name.cfg.ctmpl"
+    OUTPUT="$LBWORKDIR/haproxy.$name.cfg"
+    touch ${OUTPUT}
+    EXEC_ARGS+=" -template=\"${TMPL}:${OUTPUT}\""
+done
+
+log "starting dcos-template with arguments: ${EXEC_ARGS}"
+eval "exec ${EXEC_ARGS}"

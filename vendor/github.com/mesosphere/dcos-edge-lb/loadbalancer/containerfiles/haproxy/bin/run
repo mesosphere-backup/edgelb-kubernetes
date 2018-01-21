@@ -1,0 +1,42 @@
+#!/bin/bash
+set -euo pipefail
+
+log() {
+    msg="$1"
+
+    logline="[$(pwd) $0] $msg\n"
+
+    printf "$logline" >&1
+    printf "$logline" >&2
+}
+
+log "starting"
+
+# A hack to redirect syslog to stdout.
+# This is necessary because haproxy only logs to syslog.
+ln -sf /proc/$$/fd/1 /var/log/container_stdout
+
+# Start syslog
+/usr/sbin/syslogd -f "$LBWORKDIR/syslogd/syslog.conf"
+
+# Cleanup because this is ephermal data on a persistent volume.
+#
+# We have ephemeral data on a persistent volume because that is currently
+# the only way to share the data.
+rm -rf "$SERVICE_DIR"
+
+# Create temporary dirs
+mkdir -p "$SECRETS_DIR"
+mkdir -p "$ENVFILE_DIR"
+
+# Create lbmgr persistent dir
+#
+# `-p` because we don't want to fail if the directory already exists from a
+# previous run with the same persistent volume
+mkdir -p "$LBMGR_DIR"
+
+# Move service dir to the persistent volume so that the files are shared with
+# other tasks in the pod
+mv "$LBWORKDIR/haproxy/service" "$SERVICE_DIR"
+
+exec runsvdir -P "$SERVICE_DIR"
