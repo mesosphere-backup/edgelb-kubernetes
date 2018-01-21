@@ -1,0 +1,136 @@
+// Config shared by the dcos-commons library and the examples:
+
+// Gradle is bundled with jansi 1.9 which can crash the JVM in some cases
+// Solution taken from: https://github.com/gradle/gradle/issues/778
+buildscript {
+    dependencies {
+        classpath group: 'org.fusesource.jansi', name: 'jansi', version: '1.14'
+    }
+}
+
+plugins {
+    id 'com.github.johnrengelman.shadow' version '1.2.3'
+    id 'com.github.ksoichiro.console.reporter' version '0.5.0'
+}
+
+// Importing org.fusesource.jansi.AnsiConsole is not enough to avoid aforementioned failure
+org.fusesource.jansi.AnsiConsole.out.print('')
+
+allprojects {
+    apply plugin: 'java'
+    apply plugin: 'maven'
+    apply plugin: 'eclipse'
+    apply plugin: 'jacoco'
+    apply plugin: 'idea'
+    apply plugin: 'maven-publish'
+    apply plugin: 'com.github.ksoichiro.console.reporter'
+
+    // Double quotes are required for $rootDir to be resolved:
+    apply from: "$rootDir/gradle/quality.gradle"
+
+    group = 'mesosphere'
+    // ---
+    // INFO:
+    //
+    // In general, users of this SDK may use '-SNAPSHOT' builds for testing or development, but
+    // they MUST NOT be used for releases. A given '-SNAPSHOT' build will vary on a per-PR basis
+    // and APIs WILL break at any time. See the tags in this repo for a list of stable releases.
+    //
+    // In repo master, this version MUST ALWAYS be a '-SNAPSHOT' version.
+    // Release versions are ONLY published inside of tags.
+    // --
+    // INSTRUCTIONS: How to cut a release of e.g. '0.10.0', then start the '0.11.0-SNAPSHOT' track:
+    //
+    // 1. Run a CI job which calls './release.sh -r 0.10.0' to create the release tag from current master.
+    // 2. In the GitHub UI, add a Release entry against the tag created in step 1. List any changes in release notes.
+    // 3. Create a PR which bumps this from '0.10.0-SNAPSHOT' to '0.11.0-SNAPSHOT' in master to start the 0.11.0 track.
+    // --
+    version = '0.32.0-SNAPSHOT'
+
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
+
+    repositories {
+        jcenter()
+        mavenLocal()
+        mavenCentral()
+        maven {
+            url "http://downloads.mesosphere.com/maven/"
+        }
+        maven {
+            url "http://downloads.mesosphere.com/maven-snapshot/"
+        }
+    }
+
+    [compileJava, compileTestJava]*.options*.encoding = 'UTF-8'
+    compileJava.options.compilerArgs << '-Xlint:unchecked' << '-Xlint:deprecation'
+    compileTestJava.options.compilerArgs << '-Xlint:unchecked' << '-Xlint:deprecation'
+
+    task wrapper(type: Wrapper) {
+        gradleVersion = '3.2'
+    }
+
+    task sourcesJar(type: Jar, dependsOn: classes) {
+        classifier = 'sources'
+        from sourceSets.main.allSource
+    }
+
+    task javadocJar(type: Jar, dependsOn: javadoc) {
+        classifier = 'javadoc'
+        from javadoc.destinationDir
+        javadoc.failOnError = false
+    }
+
+    artifacts {
+        archives sourcesJar
+        archives javadocJar
+    }
+
+    idea {
+        if (project.hasProperty('ideaParentDefined')) {
+            project {
+                jdkName = '1.8'
+                languageLevel = '1.8'
+                ipr {
+                    withXml { provider ->
+                        provider.node.component
+                                .find { it.@name == 'VcsDirectoryMappings' }
+                                .mapping.@vcs = 'Git'
+                    }
+                }
+            }
+        }
+    }
+
+    tasks.withType(Javadoc) {
+        options.addStringOption('Xdoclint:none', '-quiet')
+    }
+
+    // Print results on the fly
+    test {
+        testLogging {
+            events 'passed', 'skipped', 'failed'
+        }
+    }
+}
+
+ext {
+    mesosVer = '1.4.0-rc1'
+}
+
+subprojects {
+    dependencies {
+        // Double quotes are required for $mesosVer to be resolved:
+        compile "org.apache.mesos:mesos:${mesosVer}"
+    }
+}
+
+shadowJar {
+    classifier = 'uber'
+
+    mergeServiceFiles()
+
+    exclude 'META-INF/*.SF'
+    exclude 'META-INF/*.DSA'
+    exclude 'META-INF/*.RSA'
+}

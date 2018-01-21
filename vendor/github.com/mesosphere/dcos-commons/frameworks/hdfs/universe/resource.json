@@ -1,0 +1,45 @@
+{
+  "assets": {
+    "uris": {
+      "jre-tar-gz": "{{jre-jce-unlimited-url}}",
+      "libmesos-bundle-tar-gz": "{{libmesos-bundle-url}}",
+      "hdfs-tar-gz": "https://downloads.mesosphere.com/hdfs/assets/hadoop-2.6.0-cdh5.11.0.tar.gz",
+      "hdfs-bin-tar-gz": "https://downloads.mesosphere.com/hdfs/assets/hdfs-bin.tar.gz",
+      "hdfs-jre-tar-gz": "{{jre-jce-unlimited-url}}",
+      "bootstrap-zip": "{{artifact-dir}}/bootstrap.zip",
+      "scheduler-zip": "{{artifact-dir}}/hdfs-scheduler.zip",
+      "executor-zip": "{{artifact-dir}}/executor.zip",
+      "zone-resolver-sh": "http://downloads.mesosphere.com/hdfs/assets/zone-resolver.sh"
+    }
+  },
+  "images": {
+    "icon-small": "https://downloads.mesosphere.com/hdfs/assets/icon-service-hdfs-small.png",
+    "icon-medium": "https://downloads.mesosphere.com/hdfs/assets/icon-service-hdfs-medium.png",
+    "icon-large": "https://downloads.mesosphere.com/hdfs/assets/icon-service-hdfs-large.png"
+  },
+  "cli":{
+    "binaries":{
+      "darwin":{
+        "x86-64":{
+          "contentHash":[ { "algo":"sha256", "value":"{{sha256:dcos-service-cli-darwin}}" } ],
+          "kind":"executable",
+          "url":"{{artifact-dir}}/dcos-service-cli-darwin"
+        }
+      },
+      "linux":{
+        "x86-64":{
+          "contentHash":[ { "algo":"sha256", "value":"{{sha256:dcos-service-cli-linux}}" } ],
+          "kind":"executable",
+          "url":"{{artifact-dir}}/dcos-service-cli-linux"
+        }
+      },
+      "windows":{
+        "x86-64":{
+          "contentHash":[ { "algo":"sha256", "value":"{{sha256:dcos-service-cli.exe}}" } ],
+          "kind":"executable",
+          "url":"{{artifact-dir}}/dcos-service-cli.exe"
+        }
+      }
+    }
+  }
+}

@@ -1,0 +1,21 @@
+defaults:
+  -
+    scope:
+      path: ""
+    values:
+      layout: "gh-basic"
+      stylesheet: "gh-basic.css"
+      menu_order: 999
+gems:
+  - jekyll-redirect-from
+sass:
+  sass_dir: _sass
+  style: :compressed
+highlighter: rouge
+lsi: false
+markdown: kramdown
+kramdown:
+  input: GFM
+  hard_wrap: false
+  extensions: [tables]
+source: .

@@ -9,4 +9,8 @@ import:
 - package: github.com/AsynkronIT/protoactor-go  
   version: e88eeb58949352b34fa0e468d538e76c52a55c6c
 - package: github.com/mesosphere/dcos-edge-lb
-  version: v1.0.0-rc3
+  version: refactor-client
+  repo: https://github.com/asridharan/dcos-edge-lb.git
+- package: github.com/go-openapi/runtime
+  version: a76104f379d3c5041f2a56e69db3ad8404ce4826
+

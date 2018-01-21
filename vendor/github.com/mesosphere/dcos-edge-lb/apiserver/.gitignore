@@ -12,7 +12,6 @@ containerfiles/apiserver/bin/mesos-listener
 *.zip
 .pushed
 
-client/
 cmd/
 models/api_version.go
 models/config_container.go

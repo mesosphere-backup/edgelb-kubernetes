@@ -1,0 +1,46 @@
+{
+  "assets": {
+    "uris": {
+      "jre-tar-gz": "{{jre-url}}",
+      "libmesos-bundle-tar-gz": "{{libmesos-bundle-url}}",
+      "executor-zip": "{{artifact-dir}}/executor.zip",
+      "bootstrap-zip": "{{artifact-dir}}/bootstrap.zip",
+      "scheduler-zip": "{{artifact-dir}}/elastic-scheduler.zip",
+      "statsd-plugin-zip": "https://github.com/mesosphere/elasticsearch-statsd-plugin/releases/download/{{elastic-version}}.0/elasticsearch-statsd-{{elastic-version}}.0.zip",
+      "elasticsearch-jre-tar-gz": "{{jre-url}}",
+      "elasticsearch-tar-gz": "https://artifacts.elastic.co/downloads/elasticsearch/elasticsearch-{{elastic-version}}.tar.gz",
+      "xpack-zip": "https://artifacts.elastic.co/downloads/packs/x-pack/x-pack-{{elastic-version}}.zip",
+      "diagnostics-zip": "https://github.com/elastic/elasticsearch-support-diagnostics/releases/download/{{support-diagnostics-version}}/support-diagnostics-{{support-diagnostics-version}}-dist.zip"
+    }
+  },
+  "images": {
+    "icon-small": "https://downloads.mesosphere.com/universe/assets/elasticsearch-small.png",
+    "icon-medium": "https://downloads.mesosphere.com/universe/assets/elasticsearch-medium.png",
+    "icon-large": "https://downloads.mesosphere.com/universe/assets/elasticsearch-large.png"
+  },
+  "cli": {
+    "binaries": {
+      "darwin": {
+        "x86-64": {
+          "contentHash": [ { "algo":"sha256", "value":"{{sha256:dcos-service-cli-darwin}}" } ],
+          "kind": "executable",
+          "url": "{{artifact-dir}}/dcos-service-cli-darwin"
+        }
+      },
+      "linux": {
+        "x86-64": {
+          "contentHash": [ { "algo":"sha256", "value":"{{sha256:dcos-service-cli-linux}}" } ],
+          "kind": "executable",
+          "url": "{{artifact-dir}}/dcos-service-cli-linux"
+        }
+      },
+      "windows": {
+        "x86-64": {
+          "contentHash": [ { "algo":"sha256", "value":"{{sha256:dcos-service-cli.exe}}" } ],
+          "kind": "executable",
+          "url": "{{artifact-dir}}/dcos-service-cli.exe"
+        }
+      }
+    }
+  }
+}
