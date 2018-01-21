@@ -1,0 +1,30 @@
+{
+    "id": "/bridge-nginx",
+    "cmd": "nginx -g 'daemon off;'",
+    "instances": 1,
+    "cpus": 0.1,
+    "mem": 32,
+    "constraints": [["public_ip","UNLIKE","true"]],
+    "container": {
+        "type": "DOCKER",
+        "docker": {
+            "image": "nginx:stable",
+            "network": "BRIDGE",
+            "portMappings": [
+                {
+                    "containerPort": 80,
+                    "hostPort": 0,
+                    "protocol": "tcp",
+                    "name": "web"
+                }
+            ]
+        }
+    },
+    "healthChecks": [
+        {
+            "portIndex": 0,
+            "path": "/",
+            "protocol": "HTTP"
+        }
+    ]
+}

@@ -1,0 +1,26 @@
+{
+  "id": "/host-tcp-listener",
+  "instances": 1,
+  "portDefinitions": [
+    {
+      "name": "nc",
+      "protocol": "tcp",
+      "port": 0
+    }
+  ],
+  "container": {
+    "type": "DOCKER",
+    "volumes": [],
+    "docker": {
+      "image": "busybox:1.27.1-glibc"
+    }
+  },
+  "cpus": 0.1,
+  "mem": 32,
+  "requirePorts": false,
+  "networks": [],
+  "healthChecks": [],
+  "fetch": [],
+  "constraints": [],
+  "cmd": "while true; do nc -l -p $PORT0; echo 'terminated connection'; done"
+}

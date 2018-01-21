@@ -1,0 +1,404 @@
+{{/* See the bottom of this file for notes on how to write template code and haproxy config */}}
+
+{{ define "dumpLines" }}
+  {{ range $line := . }}
+    {{ $line }}
+  {{ end }}
+{{ end }}
+
+{{ define "dumpStr" }}
+  {{- if . }}{{ . }}{{ end }}
+{{- end }}
+
+{{ $CFG := file (env "ELB_CFGCACHE_FILE") | parseJSON }}
+
+{{ $POOL := scratch.Get "pool" }}
+{{ range $CFG.pools }}
+  {{ if eq "__ELB_POOL_NAME__" .name }}
+    {{ scratch.Set "pool" . }}
+  {{ end }}
+{{ end }}
+
+{{/* Globals */}}
+{{ $POOL := scratch.Get "pool" }}
+{{ $NETWORKSCOPE := "network-scope" }}
+{{ $NSHOST := "host" }}
+{{ $NSCONTAINER := "container" }}
+
+{{ scratch.Set "apiVersion" "V1" }}
+{{ if $POOL.apiVersion }}{{if eq $POOL.apiVersion "V2"}}
+  {{ scratch.Set "apiVersion" "V2" }}
+{{ end }}{{ end }}
+{{ $apiVersion := scratch.Get "apiVersion" }}
+
+global
+  daemon
+  log /dev/log local0
+  spread-checks 5
+  max-spread-checks 15000
+  maxconn 50000
+  tune.ssl.default-dh-param 2048
+  ssl-default-bind-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:!aNULL:!MD5:!DSS
+  ssl-default-bind-options no-sslv3 no-tlsv10 no-tls-tickets
+  ssl-default-server-ciphers ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:ECDHE-RSA-AES256-GCM-SHA384:DHE-RSA-AES128-GCM-SHA256:DHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-AES128-SHA256:ECDHE-RSA-AES128-SHA256:ECDHE-ECDSA-AES256-SHA384:ECDHE-RSA-AES256-SHA384:DHE-RSA-AES128-SHA256:DHE-RSA-AES256-SHA256:AES128-GCM-SHA256:AES256-GCM-SHA384:AES128-SHA256:AES256-SHA256:!aNULL:!MD5:!DSS
+  ssl-default-server-options no-sslv3 no-tlsv10 no-tls-tickets
+  stats socket /var/run/haproxy/socket
+  server-state-file global
+  server-state-base /var/state/haproxy/
+  lua-load "$LBWORKDIR/haproxy/lua/getpids.lua"
+  lua-load "$LBWORKDIR/haproxy/lua/getconfig.lua"
+  lua-load "$LBWORKDIR/haproxy/lua/getmaps.lua"
+  lua-load "$LBWORKDIR/haproxy/lua/signalmlb.lua"
+
+defaults
+  load-server-state-from-file global
+  log               global
+  retries                   3
+  backlog               10000
+  maxconn               10000
+  timeout connect          3s
+  timeout client          30s
+  timeout server          30s
+  timeout tunnel        3600s
+  timeout http-keep-alive  1s
+  timeout http-request    15s
+  timeout queue           30s
+  timeout tarpit          60s
+  option            dontlognull
+  option            http-server-close
+  option            redispatch
+  default-server resolve-prefer ipv4
+  {{/* By default, don't crash if you can't resolve a hostname */}}
+  default-server init-addr last,libc,none
+
+resolvers default_resolvers
+  nameserver ns1 198.51.100.1:53
+  nameserver ns2 198.51.100.2:53
+  nameserver ns3 198.51.100.3:53
+  hold valid           2s
+  hold other           2s
+  hold refused         2s
+  hold nx              2s
+  hold timeout         2s
+  hold valid           2s
+
+listen stats
+  bind {{ $POOL.haproxy.stats.bindAddress }}:{{ $POOL.haproxy.stats.bindPort }}
+  balance
+  mode http
+  stats enable
+  monitor-uri /_haproxy_health_check
+  acl getpid path /_haproxy_getpids
+  http-request use-service lua.getpids if getpid
+  acl getvhostmap path /_haproxy_getvhostmap
+  http-request use-service lua.getvhostmap if getvhostmap
+  acl getappmap path /_haproxy_getappmap
+  http-request use-service lua.getappmap if getappmap
+  acl getconfig path /_haproxy_getconfig
+  http-request use-service lua.getconfig if getconfig
+  acl signalmlbhup path /_mlb_signal/hup
+  http-request use-service lua.signalmlbhup if signalmlbhup
+  acl signalmlbusr1 path /_mlb_signal/usr1
+  http-request use-service lua.signalmlbusr1 if signalmlbusr1
+
+{{ range $fe := $POOL.haproxy.frontends }}
+  frontend {{ if $fe.name }}{{ $fe.name }}{{ else }}frontend_{{ $fe.bindAddress }}_{{ $fe.bindPort }}{{ end }}
+    bind {{ $fe.bindAddress }}:{{ $fe.bindPort }}
+      {{- if eq $fe.protocol "HTTPS" }} ssl
+        {{- range $fe.certificates }} crt "$MESOS_SANDBOX/{{ . }}"{{ end }}
+      {{- end }}
+      {{- if $fe.bindModifier }} {{ $fe.bindModifier }}{{ end }}
+
+    {{ if or (eq $fe.protocol "HTTP") (eq $fe.protocol "HTTPS") }}
+      mode http
+      option httplog
+    {{ else if or (eq $fe.protocol "TCP") (eq $fe.protocol "TLS") }}
+      mode tcp
+      option tcplog
+    {{ end }}
+
+    {{ if eq $fe.protocol "TLS" }}
+      tcp-request inspect-delay 5s
+      tcp-request content accept if { req_ssl_hello_type 1 }
+    {{ end }}
+
+    {{ if $fe.redirectToHttps }}
+      redirect scheme https code 307
+        {{- if $fe.redirectToHttps.except }} unless
+          {{- range $fe.redirectToHttps.except }} {
+            {{- if .host }} req.hdr(host) -i -m reg ^{{ .host }}(:.*$)? AND{{ end }}
+            {{- if .pathBeg }} path_beg {{ .pathBeg }} AND{{ end }}
+            {{- " "}}always_true } OR
+          {{- end }} FALSE
+        {{- end }}
+    {{ end }}
+
+    {{ template "dumpLines" $fe.miscStrs }}
+
+    {{ range $link := $fe.linkBackend.map }}
+      {{ if eq $fe.protocol "HTTP" }}
+
+        use_backend {{ $link.backend }} if {
+          {{- if $link.hostEq }} req.hdr(host) -i -m reg ^{{ $link.hostEq }}(:.*$)? AND{{ end }}
+          {{- if $link.hostReg }} req.hdr(host) -i -m reg {{ $link.hostReg }} AND{{ end }}
+          {{- if $link.pathBeg }} path_beg {{ $link.pathBeg }} AND{{ end }}
+          {{- if $link.pathReg }} path_reg {{ $link.pathReg }} AND{{ end }}
+          {{- if $link.pathEnd }} path_end {{ $link.pathEnd }} AND{{ end }} always_true }
+
+      {{ else if eq $fe.protocol "HTTPS" }}
+
+        use_backend {{ $link.backend }} if {
+          {{- if $link.hostEq }} ssl_fc_sni {{ $link.hostEq }} AND{{ end }}
+          {{- if $link.hostReg }} ssl_fc_sni_reg {{ $link.hostReg }} AND{{ end }}
+          {{- if $link.pathBeg }} path_beg {{ $link.pathBeg }} AND{{ end }}
+          {{- if $link.pathReg }} path_reg {{ $link.pathReg }} AND{{ end }}
+          {{- if $link.pathEnd }} path_end {{ $link.pathEnd }} AND{{ end }} always_true }
+
+      {{ else if eq $fe.protocol "TCP" }}
+        use_backend {{ $link.backend }}
+      {{ else if eq $fe.protocol "TLS" }}
+        use_backend {{ $link.backend }} if {
+          {{- if $link.hostEq }} req.ssl_sni -i {{ $link.hostEq }} AND{{ end }} always_true }
+      {{ end }}
+    {{ end }}
+    {{/* end range $fe.linkBackend.map */}}
+
+    {{ if $fe.linkBackend.defaultBackend }}
+      default_backend {{ $fe.linkBackend.defaultBackend }}
+    {{ end }}
+{{ end }}
+{{/* end range frontends */}}
+
+{{ range $backend := $POOL.haproxy.backends }}
+  backend {{ $backend.name }}
+    balance {{ $backend.balance }}
+
+    {{ if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}
+      mode http
+    {{ else if or (eq $backend.protocol "TCP") (eq $backend.protocol "TLS") }}
+      mode tcp
+    {{ end }}
+
+    {{ if $backend.customCheck }}
+      {{ if $backend.customCheck.httpchk }}
+        option httpchk {{ template "dumpStr" $backend.customCheck.httpchkMiscStr }}
+      {{ end }}
+      {{ if $backend.customCheck.sslHelloChk }}
+        option ssl-hello-chk
+      {{ end }}
+      {{ if $backend.customCheck.miscStr }}
+        {{ $backend.customCheck.miscStr }}
+      {{ end }}
+    {{ end }}
+
+    {{ if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}{{ if $backend.rewriteHttp }}
+      {{ if $backend.rewriteHttp.sticky }}
+        {{ if $backend.rewriteHttp.sticky.enabled }}
+          {{ if $backend.rewriteHttp.sticky.customStr }}
+            {{ $backend.rewriteHttp.sticky.customStr }}
+          {{ else }}
+            cookie DCOS_SERVER_ID_FOR_THE_STICKY insert indirect nocache
+          {{ end }}
+        {{ end }}
+      {{ end }}
+
+      {{ if $backend.rewriteHttp.request }}
+        {{ if $backend.rewriteHttp.request.forwardfor }}
+          option forwardfor
+        {{ end }}
+        {{ if $backend.rewriteHttp.request.xForwardedPort }}
+          http-request set-header X-Forwarded-Port %[dst_port]
+        {{ end }}
+        {{ if $backend.rewriteHttp.request.xForwardedProtoHttpsIfTls }}
+          http-request add-header X-Forwarded-Proto https if { ssl_fc }
+        {{ end }}
+        {{ if $backend.rewriteHttp.request.setHostHeader }}
+          {{ if $backend.rewriteHttp.host }}
+            http-request set-header Host {{ $backend.rewriteHttp.host }}
+          {{ end }}
+        {{ end }}
+        {{ if $backend.rewriteHttp.request.rewritePath }}
+          {{ if $backend.rewriteHttp.path }}
+            reqirep "^([^ :]*)\ {{ $backend.rewriteHttp.path.fromPath }}(.*)"
+              {{- " "}}"\1\ {{ $backend.rewriteHttp.path.toPath }}\2"
+          {{ end }}
+        {{ end }}
+      {{ end }}
+
+      {{ if $backend.rewriteHttp.response }}
+        {{ if $backend.rewriteHttp.response.rewriteLocation }}
+          {{ if $backend.rewriteHttp.path }}
+            rspirep "^Location: (https?://.*(:[0-9]+)?)?{{ $backend.rewriteHttp.path.toPath }}(.*)"
+              {{- " " }}"Location: {{ $backend.rewriteHttp.path.fromPath }}\3" if { res.hdr(Location) -m found }
+          {{ end }}
+        {{ end }}
+      {{ end }}
+    {{ end }}{{ end }}
+
+    {{ template "dumpLines" $backend.miscStrs }}
+
+    {{ if $backend.services }}
+      {{ range $service := $backend.services }}
+        {{ range $server := dcosServiceFilter $service }}
+          {{ $servername := (printf "%s_%s_%s" (js $server.Type) (js $server.Host) (js $server.Port)) }}
+          {{ $serveraddr := (printf "%s:%s" (js $server.Host) (js $server.Port)) }}
+
+            server {{ $servername }} {{ $serveraddr }}
+              {{- if $service.endpoint.check.enabled }} check {{ template "dumpStr" $service.endpoint.check.customStr }}{{ end }}
+              {{- if eq $backend.protocol "HTTPS" }} ssl verify none{{ end }}
+              {{- if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}
+                {{- if $backend.rewriteHttp }}{{ if $backend.rewriteHttp.sticky }} cookie {{ $servername | base64Encode }}{{ end }}{{ end }}
+              {{- end }} {{ template "dumpStr" $service.endpoint.miscStr }}
+
+        {{ end }}
+        {{/* end range $server */}}
+      {{ end }}
+      {{/* end range $service */}}
+    {{ end }}
+    {{/* end v2 services */}}
+    {{ if $backend.servers }}
+      {{ range $server := $backend.servers }}
+        {{ if eq $server.type "VIP" }}
+          {{ $splitVip := ($server.port.vip | split ":") }}
+
+          {{ if (index $splitVip 0) | regexMatch "^/.*" }}
+            {{/* Named VIP */}}
+            {{ $servername := (printf "vip_%s_%s" (index $splitVip 0 | replaceAll "/" "-_") (index $splitVip 1)) }}
+            {{ $serveraddr := (printf "%s.%s.l4lb.thisdcos.directory:%s" (index $splitVip 0 | replaceAll "/" "") ($server.framework.value) (index $splitVip 1)) }}
+
+            server {{ $servername }} {{ $serveraddr }}
+              {{- if $server.check.enabled }} check {{ template "dumpStr" $server.check.customStr }}{{ end }} resolvers default_resolvers
+              {{- if eq $backend.protocol "HTTPS" }} ssl verify none{{ end }}
+              {{- if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}
+                {{- if $backend.rewriteHttp }}{{ if $backend.rewriteHttp.sticky }} cookie {{ $servername | base64Encode }}{{ end }}{{ end }}
+              {{- end }} {{ template "dumpStr" $server.miscStr }}
+
+          {{ else }}
+            {{/* Static VIP */}}
+            {{ $servername := (printf "vip_%s_%s" (index $splitVip 0) (index $splitVip 1)) }}
+            {{ $serveraddr := (printf "%s:%s" (index $splitVip 0) (index $splitVip 1)) }}
+
+            server {{ $servername }} {{ $serveraddr }}
+              {{- if $server.check.enabled }} check {{ template "dumpStr" $server.check.customStr }}{{ end }}
+              {{- if eq $backend.protocol "HTTPS" }} ssl verify none{{ end }}
+              {{- if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}
+                {{- if $backend.rewriteHttp }}{{ if $backend.rewriteHttp.sticky }} cookie {{ $servername | base64Encode }}{{ end }}{{ end }}
+              {{- end }} {{ template "dumpStr" $server.miscStr }}
+
+          {{ end }}
+        {{ else }}
+          {{/* AUTO_IP, AGENT_IP, and CONTAINER_IP */}}
+          {{ range $task := mesosTaskFrameworkFilter $server.framework.value $server.framework.match $server.task.value $server.task.match }}
+            {{ if $task.Task.Discovery }}{{ if $task.Task.Discovery.Ports }}{{ if $task.Task.Discovery.Ports.Ports }}
+              {{ $latestTaskStatus := index $task.Task.Statuses (subtract 1 (len $task.Task.Statuses)) }}
+
+              {{ range $port := $task.Task.Discovery.Ports.Ports }}
+                {{ if or (eq (js $port.Name) $server.port.name) $server.port.all }}
+
+                  {{/* AUTO_IP detection */}}
+                  {{ scratch.Set "networkScope" $NSHOST }}
+                  {{ if $port.Labels }}{{ if $port.Labels.Labels }}
+                    {{ range $label := $port.Labels.Labels }}
+                      {{ if eq (js $label.Key) $NETWORKSCOPE }}
+                        {{ scratch.Set "networkScope" (js $label.Value) }}
+                      {{ end }}
+                    {{ end }}
+                  {{ end }}{{ end }}
+                  {{ $networkScope := scratch.Get "networkScope" }}
+
+                  {{ if (or (eq $networkScope $NSHOST) (eq $server.type "AGENT_IP")) }}
+                    {{ $servername := (printf "agentip_%s_%s" (js $task.Agent.Hostname) (js $port.Number)) }}
+                    {{ $serveraddr := (printf "%s:%s" (js $task.Agent.Hostname) (js $port.Number)) }}
+
+                    server {{ $servername }} {{ $serveraddr }}
+                      {{- if $server.check.enabled }} check {{ template "dumpStr" $server.check.customStr }}{{ end }}
+                      {{- if eq $backend.protocol "HTTPS" }} ssl verify none{{ end }}
+                      {{- if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}
+                        {{- if $backend.rewriteHttp }}{{ if $backend.rewriteHttp.sticky }} cookie {{ $servername | base64Encode }}{{ end }}{{ end }}
+                      {{- end }} {{ template "dumpStr" $server.miscStr }}
+
+                  {{ else if (or (eq $networkScope $NSCONTAINER) (eq $server.type "CONTAINER_IP")) }}
+                    {{ range $networkInfo := $latestTaskStatus.ContainerStatus.NetworkInfos }}
+                      {{ range $ipAddress := $networkInfo.IpAddresses }}
+                        {{ $servername := (printf "containerip_%s_%s" (js $ipAddress.IpAddress) (js $port.Number)) }}
+                        {{ $serveraddr := (printf "%s:%s" (js $ipAddress.IpAddress) (js $port.Number)) }}
+
+                        server {{ $servername }} {{ $serveraddr }}
+                          {{- if $server.check.enabled }} check {{ template "dumpStr" $server.check.customStr }}{{ end }}
+                          {{- if eq $backend.protocol "HTTPS" }} ssl verify none{{ end }}
+                          {{- if or (eq $backend.protocol "HTTP") (eq $backend.protocol "HTTPS") }}
+                            {{- if $backend.rewriteHttp }}{{ if $backend.rewriteHttp.sticky }} cookie {{ $servername | base64Encode }}{{ end }}{{ end }}
+                          {{- end }} {{ template "dumpStr" $server.miscStr }}
+
+                      {{ end }}
+                    {{ end }}
+                  {{ end }}
+                {{ end }}
+              {{ end }}
+            {{ end }}{{ end }}{{ end }}
+          {{ end }}
+          {{/* end range $task */}}
+        {{ end }}
+      {{ end }}
+      {{/* end range $server */}}
+    {{ end }}
+    {{/* end v1 servers */}}
+{{ end }}
+{{/* end range $backend */}}
+
+{{/*
+  {{ $foo := "bar" }} Creates a block (i.e. within a `range`, `if`, etc.) variable.
+  It will only exist in the block that it was defined in, as well as in any
+  sub-blocks. Any modifications to the variable only remain
+  until the end of the block in which the modification was made.
+
+  {{ with $foo := "bar" }} {{ end }} Creates a block variable with it's own
+  block.
+
+  {{ scratch.Set "foo" "bar" }} Manipulates a global key/value pair than
+  can be retrieved with a subsequent {{ scratch.Get "foo" }}
+*/}}
+
+{{/*
+  Boolean conditions do NOT short circuit. i.e Both arguments in an `and` will
+  evaluate even if the first one is already false.
+
+  A non-existent field (e.g. a.b.nonExist) is considered false.
+*/}}
+
+{{/*
+  Trick text/template into dereferencing pointers to strings for comparison:
+  {{ if eq (js $port.Name) "mycoolstringcomparison" }}equal!{{ end }}
+*/}}
+
+{{/*
+  MAKE SURE THAT BOTH THE FRONTEND AND BACKEND HAVE THE CORRECT "mode"!
+  For example, if the frontend is "mode tcp" (default) and the backend is
+  "mode http", then it'll have a strange failure when the frontend returns
+  a empty reply some of the time.
+*/}}
+
+{{/*
+  An anonymous ACL uses curly braces: `if { a AND b }`
+  They can actually also be left out: `if a AND b `
+  The braces are useful if you want to nest conditions: `if { a AND b } OR { c AND d }`
+  The braces CANNOT be nested: `if { { a } OR { b } }`
+
+  There are special predefined ACLs, for example TRUE and FALSE. These
+  have the equivalent "fetch method" of always_true and always_false.
+
+  Stuff inside curly braces MUST BEGIN with a "fetch method" e.g.
+  `req.hdr(host)`.
+
+  If you don't have curly braces you must use an ACL.
+
+  So to sum up:
+  valid:   `if TRUE`
+  valid:   `if { always_true }`
+  valid:   `if { always_true AND TRUE }`
+  invalid: `if { TRUE }`
+  invalid: `if always_true`
+*/}}
+
+{{/* vim: ts=2 sts=2 sw=2:
+*/}}

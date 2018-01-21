@@ -1,0 +1,72 @@
+---
+pools:
+  - name: sample-path-routing
+    count: 1
+    haproxy:
+      frontends:
+        - bindPort: 80
+          protocol: HTTP
+          linkBackend:
+            defaultBackend: backend-default
+            map:
+              - pathBeg: /foo
+                backend: backend-foo
+              - pathBeg: /bar/
+                backend: backend-bar
+              - pathBeg: /baz
+                backend: backend-baz
+      backends:
+        - name: backend-foo
+          protocol: HTTP
+          rewriteHttp:
+            # The paths specified here means that "foo-svc" will see
+            # traffic coming in at "/id" rather than at "/foo"
+            path:
+              fromPath: /foo
+              toPath: /id
+          servers:
+            - framework:
+                value: marathon
+              task:
+                value: foo-svc
+              port:
+                name: foo-port
+        - name: backend-bar
+          protocol: HTTP
+          rewriteHttp:
+            # The paths specified here means that "bar-svc" will see
+            # traffic coming in at "/" rather than at "/bar/"
+            path:
+              fromPath: /bar/
+              toPath: /
+          servers:
+            - framework:
+                value: marathon
+              task:
+                value: bar-svc
+              port:
+                name: bar-port
+        - name: backend-baz
+          protocol: HTTP
+          rewriteHttp:
+            # The paths specified here means that "baz-svc" will see
+            # traffic coming in at "" rather than at "/baz"
+            path:
+              fromPath: /baz
+              toPath: ""
+          servers:
+            - framework:
+                value: marathon
+              task:
+                value: baz-svc
+              port:
+                name: baz-port
+        - name: backend-default
+          protocol: HTTP
+          servers:
+            - framework:
+                value: marathon
+              task:
+                value: default-svc
+              port:
+                name: default-port

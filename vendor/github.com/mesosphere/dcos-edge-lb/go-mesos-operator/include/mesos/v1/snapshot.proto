@@ -1,0 +1,23 @@
+import "github.com/mesosphere/dcos-edge-lb/go-mesos-operator/include/mesos/v1/mesos.proto";
+
+package mesos.v1;
+
+option java_package = "org.apache.mesos.v1";
+option java_outer_classname = "Protos";
+
+service SnapshotSubscribe {
+  rpc StreamSnapshot (SnapshotRequest) returns (stream FrameworkSnapshot) {}
+}
+
+message FrameworkSnapshot {
+  // Frameworkid to Framework
+  map<string, FrameworkInfo> frameworks = 1;
+
+  // Taskid to Task
+  map<string, Task> tasks = 2;
+
+  // Agentid to Agent
+  map<string, AgentInfo> agents = 3;
+}
+
+message SnapshotRequest {}

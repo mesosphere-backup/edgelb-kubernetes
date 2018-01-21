@@ -1,8 +1,8 @@
-hash: 95d33aba6332ce0853f09af4704ee2c3deb8f8f9d686089a79ce9bd58b1d337f
-updated: 2018-01-08T16:03:29.916114825-08:00
+hash: 44ba1a9074f77c6b12cf4239869159a63b490e0fa9f63b890df3c6e18e6ac4d7
+updated: 2018-01-21T04:24:11.835380222Z
 imports:
 - name: github.com/AsynkronIT/protoactor-go
-  version: 1579a3e2bb055995f842e2a70284bc37b8e7e545
+  version: e88eeb58949352b34fa0e468d538e76c52a55c6c
   subpackages:
   - actor
   - eventstream
@@ -14,6 +14,10 @@ imports:
   version: 782f4967f2dc4564575ca782fe2d04090b5faca8
   subpackages:
   - spew
+- name: github.com/dcos/dcos-go
+  version: 9358c3d9b0d795248584ad502affd0ea78866995
+  subpackages:
+  - dcos/http/transport
 - name: github.com/emicklei/go-restful
   version: ff4f55a206334ef123e4f79bbf348980da81ca46
   subpackages:
@@ -88,6 +92,12 @@ imports:
   - buffer
   - jlexer
   - jwriter
+- name: github.com/mesosphere/dcos-edge-lb
+  version: 0b44c8ba0b8c0414801182e000c474ee0348cb1e
+  subpackages:
+  - apiserver/dcos
+  - apiserver/logging
+  - apiserver/util
 - name: github.com/orcaman/concurrent-map
   version: d4c23bd0e01134806215ffe65ba3fd22ec6721f7
 - name: github.com/peterbourgon/diskv
@@ -106,6 +116,8 @@ imports:
   - observable
   - observer
   - subscription
+- name: github.com/Sirupsen/logrus
+  version: d682213848ed68c0a260ca37d6dd5ace8423f5ba
 - name: github.com/spf13/pflag
   version: 9ff6c6923cfffbcd502984b8e0c80539a94968b7
 - name: github.com/Workiva/go-datastructures
@@ -115,6 +127,8 @@ imports:
 - name: golang.org/x/crypto
   version: 81e90905daefcd6fd217b62423c0908922eadb30
   subpackages:
+  - ed25519
+  - ed25519/internal/edwards25519
   - ssh/terminal
 - name: golang.org/x/net
   version: 1c05540f6879653db88113bc4a2b70aec4bd491f
@@ -146,6 +160,12 @@ imports:
   - width
 - name: gopkg.in/inf.v0
   version: 3887ee99ecf07df5b447e9b00d9c0b2adaa9f3e4
+- name: gopkg.in/square/go-jose.v2
+  version: f8f38de21b4dcd69d0413faf231983f5fd6634b1
+  subpackages:
+  - cipher
+  - json
+  - jwt
 - name: gopkg.in/yaml.v2
   version: 53feefa2559fb8dfa8d81baad31be332c97d6c77
 - name: k8s.io/api

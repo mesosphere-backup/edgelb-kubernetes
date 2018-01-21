@@ -1,0 +1,95 @@
+{
+"id": "{{service.name}}",
+"cpus": 1.0,
+"mem": 1230,
+"instances": 1,
+"constraints": [["public_ip", "UNLIKE", "true"]],
+"cmd": "{{service.cmdPrefix}} && ./edgelb-pool-scheduler/bin/edgelb-pool ./edgelb-pool-scheduler/{{service.specFile}}",
+"container": {
+"type": "MESOS"
+},
+"labels": {
+"DCOS_COMMONS_API_VERSION": "v1",
+"DCOS_COMMONS_UNINSTALL": "true",
+"DCOS_PACKAGE_FRAMEWORK_NAME": "{{service.name}}",
+"MARATHON_SINGLE_INSTANCE_APP":"true",
+"DCOS_SERVICE_NAME": "{{service.name}}",
+"DCOS_SERVICE_PORT_INDEX": "0",
+"DCOS_SERVICE_SCHEME": "http"
+},
+{{#service.secretName}}
+    "secrets": {
+    "serviceCredential": {
+    "source": "{{service.secretName}}"
+    }
+    },
+{{/service.secretName}}
+"env": {
+    "FRAMEWORK_NAME": "{{service.name}}",
+    "FRAMEWORK_PRINCIPAL": "{{service.principal}}",
+    "FRAMEWORK_USER": "{{service.user}}",
+    "POOL_RESERVED_ROLE": "{{edgelbPool.role}}",
+    "POOL_NAME": "{{edgelbPool.name}}",
+    "POOL_ZKPATH": "{{edgelbPool.zkpath}}",
+    "POOL_CONSTRAINTS": "{{edgelbPool.placementConstraints}}",
+    "POOL_COUNT": "{{edgelbPool.count}}",
+    "POOL_CPUS": "{{edgelbPool.cpus}}",
+    "POOL_SIDECAR_CPUS": "{{edgelbPool.cpusSidecar}}",
+    "POOL_MEM": "{{edgelbPool.mem}}",
+    "POOL_SIDECAR_MEM": "{{edgelbPool.memSidecar}}",
+    "POOL_DISK": "{{edgelbPool.disk}}",
+    "POOL_PORTS": "{{edgelbPool.ports}}",
+    "POOL_AUTOCERT": "{{edgelbPool.autocert}}",
+    "POOL_IMAGE": "{{resource.assets.container.docker.image}}",
+    "POOL_RELATIVE_VOLUME_PATH": "persistent",
+    "POOL_SECRETS_RELATIVE_PATH": "{{variables.secrets}}",
+    "POOL_ENVFILE_RELATIVE_PATH": "{{variables.envfile}}",
+    "JAVA_URI": "{{resource.assets.uris.jre-tar-gz}}",
+    "EXECUTOR_URI": "{{resource.assets.uris.executor-zip}}",
+    {{#service.secretName}}
+    "DCOS_SERVICE_ACCOUNT_CREDENTIAL": { "secret": "serviceCredential" },
+    "MESOS_MODULES": "{\"libraries\": [{\"file\": \"libdcos_security.so\", \"modules\": [{\"name\": \"com_mesosphere_dcos_ClassicRPCAuthenticatee\"}]}]}",
+    "MESOS_AUTHENTICATEE": "com_mesosphere_dcos_ClassicRPCAuthenticatee",
+    {{/service.secretName}}
+    {{#edgelbPool.env}}
+    "TASKCFG_ALL_{{key}}": "{{value}}",
+    {{/edgelbPool.env}}
+    {{#edgelbPool.secrets}}
+    "PARSESECRET_SECRET{{index}}": "{{secret}}",
+    "PARSESECRET_FILE{{index}}": "{{variables.secrets}}/{{file}}",
+    {{/edgelbPool.secrets}}
+    {{#edgelbPool.networks}}
+    "PARSENETWORK_NAME{{index}}": "{{name}}",
+    "PARSENETWORK_LABELS{{index}}": "{{labels}}",
+    {{/edgelbPool.networks}}
+    "LIBMESOS_URI": "{{resource.assets.uris.libmesos-bundle-tar-gz}}"
+  },
+  "uris": [
+    "{{resource.assets.uris.jre-tar-gz}}",
+    "{{resource.assets.uris.scheduler-zip}}",
+    "{{resource.assets.uris.libmesos-bundle-tar-gz}}"
+  ],
+  "upgradeStrategy":{
+    "minimumHealthCapacity": 0,
+    "maximumOverCapacity": 0
+  },
+  "healthChecks": [
+    {
+      "protocol": "MESOS_HTTP",
+      "path": "/v1/plans/deploy",
+      "gracePeriodSeconds": 900,
+      "intervalSeconds": 30,
+      "portIndex": 0,
+      "timeoutSeconds": 30,
+      "maxConsecutiveFailures": 0
+    }
+  ],
+  "portDefinitions": [
+    {
+      "port": 0,
+      "protocol": "tcp",
+      "name": "api",
+      "labels": { "VIP_0": "/api.{{service.name}}:80" }
+    }
+  ]
+}

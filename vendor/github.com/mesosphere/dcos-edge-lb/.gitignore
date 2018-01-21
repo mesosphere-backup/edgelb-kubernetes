@@ -1,0 +1,15 @@
+edgelb-options.json
+edgelb-public-key.pem
+*.mk
+*.bak
+_*
+
+.cache
+itests/_b/
+__pycache__
+
+/framework/.nb-gradle/
+/framework/edgelb-pool/.nb-gradle/
+
+.ssh/
+.aws/

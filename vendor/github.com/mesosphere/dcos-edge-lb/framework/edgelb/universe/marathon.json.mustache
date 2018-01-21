@@ -1,0 +1,76 @@
+{
+  "id": "{{service.name}}",
+  "cpus": {{service.cpus}},
+  "mem": {{service.mem}},
+  "instances": 1,
+  "constraints": [["public_ip", "UNLIKE", "true"]],
+  "cmd": "cp -R /dcosfilestmp/* /dcosfiles/ && /dcosfiles/apiserver/bin/run",
+  "args": [],
+  "env": {
+    {{#service.secretName}}
+    "DCOS_SECRET_NAME": "{{service.secretName}}",
+    "DCOS_PRINCIPAL": "{{service.principal}}",
+    "DCOS_SERVICE_ACCOUNT_CREDENTIAL": { "secret": "serviceCredential" },
+    {{/service.secretName}}
+    "DCOS_ADDR": "{{service.dcosAddress}}",
+    "DCOS_PROT": "{{service.dcosProtocol}}",
+    "MESOS_ADDR": "{{service.mesosAddress}}",
+    "MESOS_PROT": "{{service.mesosProtocol}}",
+    "APIS_ZK": "{{service.zkHosts}}",
+    "APIS_ZK_TIMEOUT": "{{service.zkTimeout}}",
+    "APIS_ZK_PATH": "{{service.zkPath}}",
+    "APIS_SCHEME": "{{service.scheme}}"
+  },
+  "container": {
+    "type": "MESOS",
+    "volumes": [
+      {
+        "containerPath": "/dcosfiles",
+        "hostPath": "dcosfiles",
+        "mode": "RW"
+      }
+    ],
+    "docker": {
+      "image": "{{resource.assets.container.docker.image}}",
+      "forcePullImage": {{service.forcePull}},
+      "parameters": []
+    }
+  },
+  "labels": {
+    "MARATHON_SINGLE_INSTANCE_APP": "true",
+    "DCOS_SERVICE_NAME": "edgelb",
+    "DCOS_SERVICE_PORT_INDEX": "0",
+    "DCOS_SERVICE_SCHEME": "{{service.scheme}}"
+  },
+  {{#service.secretName}}
+  "secrets": {
+    "serviceCredential": {
+      "source": "{{service.secretName}}"
+    }
+  },
+  {{/service.secretName}}
+  "uris": [],
+  "upgradeStrategy":{
+    "minimumHealthCapacity": 0,
+    "maximumOverCapacity": 0
+  },
+  "healthChecks": [
+    {
+      "protocol": "MESOS_HTTP",
+      "path": "/v1/ping",
+      "gracePeriodSeconds": 900,
+      "intervalSeconds": 30,
+      "portIndex": 0,
+      "timeoutSeconds": 30,
+      "maxConsecutiveFailures": 0
+    }
+  ],
+  "portDefinitions": [
+    {
+      "port": 0,
+      "protocol": "tcp",
+      "name": "api",
+      "labels": { "VIP_0": "/api.edgelb:80" }
+    }
+  ]
+}

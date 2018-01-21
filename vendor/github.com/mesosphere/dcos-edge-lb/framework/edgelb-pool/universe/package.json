@@ -1,0 +1,13 @@
+{
+  "packagingVersion": "3.0",
+  "minDcosReleaseVersion": "1.10",
+  "name": "edgelb-pool",
+  "version": "{{package-version}}",
+  "maintainer": "support@mesosphere.io",
+  "description": "EdgeLB Pool on DC/OS",
+  "selected": false,
+  "framework": true,
+  "tags": ["edgelb-pool"],
+  "postInstallNotes": "DC/OS EdgeLB Pool is being installed!",
+  "postUninstallNotes": "DC/OS EdgeLB Pool has been uninstalled."
+}

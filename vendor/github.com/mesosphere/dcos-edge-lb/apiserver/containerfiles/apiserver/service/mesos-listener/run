@@ -1,0 +1,34 @@
+#!/bin/bash
+set -euo pipefail
+
+log() {
+    msg="$1"
+
+    logline="[$(pwd) $0] $msg\n"
+
+    printf "$logline" >&1
+    printf "$logline" >&2
+}
+
+log "starting"
+
+# Local
+: ${DCOS_ADDR:="leader.mesos"}
+: ${DCOS_PROT:="https"}
+: ${MESOS_ADDR:="leader.mesos:5050"}
+: ${MESOS_PROT:="https"}
+: ${MESOS_LISTENER_ADDR:="127.0.0.1:3535"}
+: ${DCOS_SERVICE_ACCOUNT_CREDENTIAL:=""}
+: ${EDGELB_LOG_LEVEL:="info"}
+
+# Exported
+export DCOS_SERVICE_ACCOUNT_CREDENTIAL
+
+# TODO: parameterize mesos address and protocol
+exec "$LBWORKDIR/apiserver/bin/mesos-listener" \
+	   -bindaddr "$MESOS_LISTENER_ADDR" \
+     -dcosaddr "$DCOS_ADDR" \
+     -dcosprot "$DCOS_PROT" \
+	   -mesosaddr "$MESOS_ADDR" \
+	   -mesosprot "$MESOS_PROT" \
+	   -loglevel "$EDGELB_LOG_LEVEL"

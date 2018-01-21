@@ -4,8 +4,8 @@ import (
 	"fmt"
 
 	// Edgelb-k8s packages
-	LBState "pkg/lb/state"
-	"pkg/state"
+	LBState "edgelb-k8s/pkg/lb/state"
+	"edgelb-k8s/pkg/state"
 )
 
 type LoadBalancer interface {

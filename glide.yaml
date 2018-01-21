@@ -1,4 +1,4 @@
-package: github.com/asridharan/edgelb-k8s
+package: edgelb-k8s
 import:
 - package: k8s.io/client-go
   version: v5.0.0
@@ -6,3 +6,7 @@ import:
   version: v1.8.0
   subpackages:
   - pkg/api
+- package: github.com/AsynkronIT/protoactor-go  
+  version: e88eeb58949352b34fa0e468d538e76c52a55c6c
+- package: github.com/mesosphere/dcos-edge-lb
+  version: v1.0.0-rc3

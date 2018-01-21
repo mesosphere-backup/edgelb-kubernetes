@@ -1,0 +1,20 @@
+---
+pools:
+  - name: sample-minimal
+    count: 1
+    haproxy:
+      frontends:
+        - bindPort: 80
+          protocol: HTTP
+          linkBackend:
+            defaultBackend: host-id
+      backends:
+        - name: host-id
+          protocol: HTTP
+          servers:
+            - framework:
+                value: marathon
+              task:
+                value: host-id
+              port:
+                name: id
