@@ -1,5 +1,5 @@
-hash: 44ba1a9074f77c6b12cf4239869159a63b490e0fa9f63b890df3c6e18e6ac4d7
-updated: 2018-01-21T04:24:11.835380222Z
+hash: ffb58002fc7936bbccc206b73180eadf8ff9a20d9ac7913717c6b734a00ca69b
+updated: 2018-01-20T17:37:58.912477708Z
 imports:
 - name: github.com/AsynkronIT/protoactor-go
   version: e88eeb58949352b34fa0e468d538e76c52a55c6c
