@@ -1,4 +1,3 @@
-GOPATH=`pwd`
 GOBUILDENV="-e GOPATH='/go' -e CGO_ENABLED=0 -e GOOS='linux'"
 all:edgelb_controller
 
@@ -32,6 +31,8 @@ vendor:
 			-w='/go/src/edgelb-k8s'\
 			instrumentisto/glide:0.13.1-go1.9\
 			update --strip-vendor
+edge-lb-swagger:
+	make -C vendor/github.com/mesosphere/dcos-edge-lb/apiserver/spec
 
 package:edgelb_controller edgelb_client
 	docker build -t mesosphere/edgelb-k8s-controller ./
