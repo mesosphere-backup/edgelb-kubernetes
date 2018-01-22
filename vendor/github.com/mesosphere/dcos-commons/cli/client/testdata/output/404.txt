@@ -1,0 +1,1 @@
+dcos hello-world describe requires Enterprise DC/OS 1.10 or newer.

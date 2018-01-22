@@ -32,6 +32,11 @@ public abstract class UninstallStep extends AbstractStep {
     }
 
     @Override
+    public Optional<PodInstanceRequirement> getAsset() {
+        return getPodInstanceRequirement();
+    }
+
+    @Override
     public List<String> getErrors() {
         return Collections.emptyList();
     }

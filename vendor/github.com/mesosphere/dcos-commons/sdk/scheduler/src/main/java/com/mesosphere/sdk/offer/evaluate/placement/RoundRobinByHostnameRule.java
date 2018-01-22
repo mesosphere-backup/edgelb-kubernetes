@@ -5,13 +5,13 @@ import com.fasterxml.jackson.annotation.JsonProperty;
 import com.mesosphere.sdk.offer.TaskException;
 import com.mesosphere.sdk.offer.taskdata.TaskLabelReader;
 
+import org.apache.commons.lang3.builder.EqualsBuilder;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.mesos.Protos.Offer;
 import org.apache.mesos.Protos.TaskInfo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.Arrays;
-import java.util.Collection;
 import java.util.Optional;
 
 /**
@@ -59,14 +59,14 @@ public class RoundRobinByHostnameRule extends AbstractRoundRobinRule {
     /**
      * Returns a value to round robin against from the provided {@link Offer}.
      */
-    protected String getKey(Offer offer) {
+    protected String getValue(Offer offer) {
         return offer.getHostname();
     }
 
     /**
      * Returns a value to round robin against from the provided {@link TaskInfo}.
      */
-    protected String getKey(TaskInfo task) {
+    protected String getValue(TaskInfo task) {
         try {
             return new TaskLabelReader(task).getHostname();
         } catch (TaskException e) {
@@ -77,18 +77,27 @@ public class RoundRobinByHostnameRule extends AbstractRoundRobinRule {
 
     @JsonProperty("agent-count")
     private Optional<Integer> getAgentCount() {
-        return distinctKeyCount;
+        return distinctValueCount;
+    }
+
+    @JsonProperty("task-filter")
+    private StringMatcher getTaskFilter() {
+        return taskFilter;
     }
 
     @Override
     public String toString() {
         return String.format("RoundRobinByHostnameRule{agent-count=%s, task-filter=%s}",
-                distinctKeyCount, taskFilter);
+                distinctValueCount, taskFilter);
     }
 
     @Override
-    public Collection<PlacementField> getPlacementFields() {
-        return Arrays.asList(PlacementField.HOSTNAME);
+    public boolean equals(Object o) {
+        return EqualsBuilder.reflectionEquals(this, o);
+    }
+
+    @Override
+    public int hashCode() {
+        return HashCodeBuilder.reflectionHashCode(this);
     }
 }
-

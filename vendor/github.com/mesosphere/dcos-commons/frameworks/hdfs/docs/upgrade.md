@@ -1,10 +1,7 @@
 ---
-layout: layout.pug
-navigationTitle: 
-excerpt:
-title: Upgrade
-menuWeight: 130
-
+post_title: Upgrade
+menu_order: 130
+enterprise: 'no'
 ---
 
 # Overview

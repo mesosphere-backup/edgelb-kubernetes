@@ -1,6 +1,5 @@
 package com.mesosphere.sdk.offer;
 
-import com.mesosphere.sdk.scheduler.Metrics;
 import org.apache.mesos.Protos;
 import org.apache.mesos.SchedulerDriver;
 import org.slf4j.Logger;
@@ -46,36 +45,19 @@ public class OfferUtils {
                 .anyMatch(acceptedOfferId -> acceptedOfferId.equals(offer.getId()));
     }
 
-    public static void declineShort(SchedulerDriver driver, Collection<Protos.Offer> unusedOffers) {
-        OfferUtils.declineOffers(driver, unusedOffers, Constants.SHORT_DECLINE_SECONDS);
-        Metrics.incrementDeclinesShort(unusedOffers.size());
-    }
-
-    public static void declineLong(SchedulerDriver driver, Collection<Protos.Offer> unusedOffers) {
-        OfferUtils.declineOffers(driver, unusedOffers, Constants.LONG_DECLINE_SECONDS);
-        Metrics.incrementDeclinesLong(unusedOffers.size());
-    }
-
     /**
      * Decline unused {@link org.apache.mesos.Protos.Offer}s.
      *
      * @param driver The {@link SchedulerDriver} that will receive the declineOffer() calls
      * @param unusedOffers The collection of Offers to decline
-     * @param refuseSeconds The number of seconds for which the offers should be refused
      */
-    private static void declineOffers(
-            SchedulerDriver driver, Collection<Protos.Offer> unusedOffers, int refuseSeconds) {
-        Collection<Protos.OfferID> offerIds = unusedOffers.stream()
-                .map(offer -> offer.getId())
-                .collect(Collectors.toList());
-        LOGGER.info("Declining {} unused offer{} for {} seconds: {}",
-                offerIds.size(),
-                offerIds.size() == 1 ? "" : "s",
-                refuseSeconds,
-                offerIds.stream().map(Protos.OfferID::getValue).collect(Collectors.toList()));
-        final Protos.Filters filters = Protos.Filters.newBuilder()
-                .setRefuseSeconds(refuseSeconds)
-                .build();
-        offerIds.forEach(offerId -> driver.declineOffer(offerId, filters));
+    public static void declineOffers(SchedulerDriver driver, Collection<Protos.Offer> unusedOffers) {
+        LOGGER.info("Declining {} unused offers:", unusedOffers.size());
+        unusedOffers.forEach(offer -> {
+            final Protos.OfferID offerId = offer.getId();
+            LOGGER.info("  {}", offerId.getValue());
+            driver.declineOffer(offerId);
+        });
     }
+
 }

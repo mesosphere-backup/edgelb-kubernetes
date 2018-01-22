@@ -48,12 +48,7 @@ func NegotiateContentType(r *http.Request, offers []string, defaultOffer string)
 	bestQ := -1.0
 	bestWild := 3
 	specs := header.ParseAccept(r.Header, "Accept")
-	for _, rawOffer := range offers {
-		offer := normalizeOffer(rawOffer)
-		// No Accept header: just return the first offer.
-		if len(specs) == 0 {
-			return rawOffer
-		}
+	for _, offer := range offers {
 		for _, spec := range specs {
 			switch {
 			case spec.Q == 0.0:
@@ -64,35 +59,24 @@ func NegotiateContentType(r *http.Request, offers []string, defaultOffer string)
 				if spec.Q > bestQ || bestWild > 2 {
 					bestQ = spec.Q
 					bestWild = 2
-					bestOffer = rawOffer
+					bestOffer = offer
 				}
 			case strings.HasSuffix(spec.Value, "/*"):
 				if strings.HasPrefix(offer, spec.Value[:len(spec.Value)-1]) &&
 					(spec.Q > bestQ || bestWild > 1) {
 					bestQ = spec.Q
 					bestWild = 1
-					bestOffer = rawOffer
+					bestOffer = offer
 				}
 			default:
 				if spec.Value == offer &&
 					(spec.Q > bestQ || bestWild > 0) {
 					bestQ = spec.Q
 					bestWild = 0
-					bestOffer = rawOffer
+					bestOffer = offer
 				}
 			}
 		}
 	}
 	return bestOffer
-}
-
-func normalizeOffers(orig []string) (norm []string) {
-	for _, o := range orig {
-		norm = append(norm, normalizeOffer(o))
-	}
-	return
-}
-
-func normalizeOffer(orig string) string {
-	return strings.SplitN(orig, ";", 2)[0]
 }

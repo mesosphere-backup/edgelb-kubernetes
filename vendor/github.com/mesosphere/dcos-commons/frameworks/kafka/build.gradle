@@ -24,6 +24,9 @@ dependencies {
     testCompile project(":testing")
 }
 
+distZip.dependsOn ":executor:distZip"
+distZip.finalizedBy copyExecutor
+
 distributions {
     main {
         baseName = 'kafka-scheduler'

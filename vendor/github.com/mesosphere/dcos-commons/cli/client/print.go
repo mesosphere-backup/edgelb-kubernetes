@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
+	"net/http"
 	"os"
 
 	"github.com/mesosphere/dcos-commons/cli/config"
@@ -27,12 +28,33 @@ func printMessageAndExit(format string, a ...interface{}) (int, error) {
 	return 0, nil
 }
 
-// PrintVerbose prints a message using PrintMessage iff config.Verbose is enabled
-func PrintVerbose(format string, a ...interface{}) (int, error) {
+func printResponseError(response *http.Response) {
+	PrintMessage("HTTP %s Query for %s failed: %s",
+		response.Request.Method, response.Request.URL, response.Status)
+}
+
+func createResponseError(response *http.Response) error {
+	return fmt.Errorf("HTTP %s Query for %s failed: %s",
+		response.Request.Method, response.Request.URL, response.Status)
+}
+
+func printResponseErrorAndExit(response *http.Response) {
+	PrintMessageAndExit(createResponseError(response).Error())
+}
+
+func createServiceNameError() error {
+	errorString := `Could not reach the service scheduler with name '%s'.
+Did you provide the correct service name? Specify a different name with '--name=<name>'.
+Was the service recently installed or updated? It may still be initializing, wait a bit and try again.`
+	return fmt.Errorf(errorString, config.ServiceName)
+}
+
+func printServiceNameErrorAndExit(response *http.Response) {
+	// TODO: check to see what the actual service state is
 	if config.Verbose {
-		return PrintMessage(format, a...)
+		printResponseError(response)
 	}
-	return 0, nil
+	PrintMessageAndExit(createServiceNameError().Error())
 }
 
 // PrintJSONBytes pretty prints responseBytes assuming it is valid JSON.

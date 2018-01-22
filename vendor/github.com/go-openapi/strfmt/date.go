@@ -18,6 +18,7 @@ import (
 	"database/sql/driver"
 	"errors"
 	"fmt"
+	"regexp"
 	"time"
 
 	"gopkg.in/mgo.v2/bson"
@@ -33,14 +34,24 @@ func init() {
 
 // IsDate returns true when the string is a valid date
 func IsDate(str string) bool {
-	_, err := time.Parse(RFC3339FullDate, str)
-	return err == nil
+	matches := rxDate.FindAllStringSubmatch(str, -1)
+	if len(matches) == 0 || len(matches[0]) == 0 {
+		return false
+	}
+	m := matches[0]
+	return !(m[2] < "01" || m[2] > "12" || m[3] < "01" || m[3] > "31")
 }
 
 const (
 	// RFC3339FullDate represents a full-date as specified by RFC3339
 	// See: http://goo.gl/xXOvVd
 	RFC3339FullDate = "2006-01-02"
+	// DatePattern pattern to match for the date format from http://tools.ietf.org/html/rfc3339#section-5.6
+	DatePattern = `^([0-9]{4})-([0-9]{2})-([0-9]{2})`
+)
+
+var (
+	rxDate = regexp.MustCompile(DatePattern)
 )
 
 // Date represents a date from the API
@@ -91,7 +102,7 @@ func (d *Date) Scan(raw interface{}) error {
 
 // Value converts Date to a primitive value ready to written to a database.
 func (d Date) Value() (driver.Value, error) {
-	return driver.Value(d.String()), nil
+	return driver.Value(d), nil
 }
 
 func (t Date) MarshalJSON() ([]byte, error) {

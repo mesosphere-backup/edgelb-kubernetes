@@ -21,6 +21,7 @@ ext {
 
 dependencies {
     compile project(":scheduler")
+    compile project(":executor")
     testCompile project(":testing")
 }
 
@@ -31,8 +32,8 @@ task copyKeystoreApp(type: Copy) {
     into('build/distributions')
 }
 
-distZip.dependsOn ":keystore-app:integrationTestZip"
-distZip.finalizedBy copyKeystoreApp
+distZip.dependsOn ":executor:distZip", ":keystore-app:integrationTestZip"
+distZip.finalizedBy copyExecutor, copyKeystoreApp
 
 distributions {
     main {

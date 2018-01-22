@@ -1,7 +1,6 @@
 import logging
 
 import pytest
-import retrying
 import sdk_install
 import sdk_marathon
 import shakedown
@@ -13,18 +12,14 @@ log = logging.getLogger(__name__)
 @pytest.fixture(scope='module', autouse=True)
 def configure_package(configure_security):
     try:
-        sdk_install.uninstall(config.PACKAGE_NAME, config.SERVICE_NAME)
+        sdk_install.uninstall(config.PACKAGE_NAME)
+        options = sdk_install.get_package_options({ "service": { "spec_file": "examples/taskcfg.yml" } })
         # don't wait for install to complete successfully:
-        sdk_install.install(
-            config.PACKAGE_NAME,
-            config.SERVICE_NAME,
-            0,
-            { "service": { "spec_file": "examples/taskcfg.yml" } },
-            wait_for_deployment=False)
+        shakedown.install_package(config.PACKAGE_NAME, options_json=options)
 
         yield # let the test session execute
     finally:
-        sdk_install.uninstall(config.PACKAGE_NAME, config.SERVICE_NAME)
+        sdk_install.uninstall(config.PACKAGE_NAME)
 
 
 @pytest.mark.sanity
@@ -36,14 +31,9 @@ def test_deploy():
 
     # we can get brief blips of TASK_RUNNING but they shouldnt last more than 2-3s:
     consecutive_task_running = 0
-
-    @retrying.retry(
-        wait_fixed=1000,
-        stop_max_delay=1000*wait_time,
-        retry_on_result=lambda res: not res)
-    def wait():
+    def fn():
         nonlocal consecutive_task_running
-        svc_tasks = shakedown.get_service_tasks(config.SERVICE_NAME)
+        svc_tasks = shakedown.get_service_tasks(config.PACKAGE_NAME)
         states = [t['state'] for t in svc_tasks]
         log.info('Task states: {}'.format(states))
         if 'TASK_RUNNING' in states:
@@ -54,16 +44,16 @@ def test_deploy():
         return False
 
     try:
-        wait()
-    except retrying.RetryError:
+        shakedown.wait_for(lambda: fn(), timeout_seconds=wait_time)
+    except shakedown.TimeoutExpired:
         log.info('Timeout reached as expected')
 
     # add the needed envvars in marathon and confirm that the deployment succeeds:
-    marathon_config = sdk_marathon.get_config(config.SERVICE_NAME)
+    marathon_config = sdk_marathon.get_config(config.PACKAGE_NAME)
     env = marathon_config['env']
     del env['SLEEP_DURATION']
     env['TASKCFG_ALL_OUTPUT_FILENAME'] = 'output'
     env['TASKCFG_ALL_SLEEP_DURATION'] = '1000'
-    sdk_marathon.update_app(config.SERVICE_NAME, marathon_config)
+    sdk_marathon.update_app(config.PACKAGE_NAME, marathon_config)
 
     config.check_running()

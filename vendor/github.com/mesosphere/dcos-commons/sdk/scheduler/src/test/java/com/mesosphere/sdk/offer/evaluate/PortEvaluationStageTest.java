@@ -2,9 +2,8 @@ package com.mesosphere.sdk.offer.evaluate;
 
 import com.mesosphere.sdk.offer.*;
 import com.mesosphere.sdk.dcos.DcosConstants;
-import com.mesosphere.sdk.offer.evaluate.placement.TestPlacementUtils;
+import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.offer.taskdata.TaskLabelWriter;
-import com.mesosphere.sdk.scheduler.SchedulerConfig;
 import com.mesosphere.sdk.scheduler.plan.DefaultPodInstance;
 import com.mesosphere.sdk.scheduler.plan.PodInstanceRequirement;
 import com.mesosphere.sdk.specification.*;
@@ -13,12 +12,11 @@ import org.apache.mesos.Protos;
 import org.junit.Assert;
 import org.junit.Test;
 
-import java.io.File;
 import java.util.*;
 import java.util.stream.Collectors;
 
 public class PortEvaluationStageTest extends DefaultCapabilitiesTestSuite {
-    private static final SchedulerConfig SCHEDULER_CONFIG = SchedulerConfigTestUtils.getTestSchedulerConfig();
+    private static final SchedulerFlags flags = OfferRequirementTestUtils.getTestSchedulerFlags();
 
     private Protos.Value getPort(int port) {
         return Protos.Value.newBuilder()
@@ -36,11 +34,10 @@ public class PortEvaluationStageTest extends DefaultCapabilitiesTestSuite {
                 podInstanceRequirement,
                 TestConstants.SERVICE_NAME,
                 UUID.randomUUID(),
-                SchedulerConfigTestUtils.getTestSchedulerConfig(),
+                OfferRequirementTestUtils.getTestSchedulerFlags(),
                 Collections.emptyList(),
                 TestConstants.FRAMEWORK_ID,
-                useDefaultExecutor,
-                Collections.emptyMap());
+                useDefaultExecutor);
     }
 
     private PodInstanceRequirement getPodInstanceRequirement(PortSpec... portSpecs) {
@@ -71,12 +68,11 @@ public class PortEvaluationStageTest extends DefaultCapabilitiesTestSuite {
     }
 
     private DefaultPodInstance getPodInstance(String serviceSpecFileName) throws Exception {
-        ClassLoader classLoader = getClass().getClassLoader();
-        File file = new File(classLoader.getResource(serviceSpecFileName).getFile());
-        DefaultServiceSpec serviceSpec = DefaultServiceSpec.newGenerator(file, SCHEDULER_CONFIG).build();
+        DefaultServiceSpec serviceSpec = ServiceSpecTestUtils.getPodInstance(serviceSpecFileName, flags);
 
         PodSpec podSpec = DefaultPodSpec.newBuilder(serviceSpec.getPods().get(0))
-                .placementRule(TestPlacementUtils.PASS)
+                .placementRule((offer, offerRequirement, taskInfos) ->
+                        EvaluationOutcome.pass(this, "pass for test").build())
                 .build();
 
         serviceSpec = DefaultServiceSpec.newBuilder(serviceSpec)
@@ -452,11 +448,10 @@ public class PortEvaluationStageTest extends DefaultCapabilitiesTestSuite {
                 podInstanceRequirement,
                 TestConstants.SERVICE_NAME,
                 UUID.randomUUID(),
-                SchedulerConfigTestUtils.getTestSchedulerConfig(),
+                OfferRequirementTestUtils.getTestSchedulerFlags(),
                 Collections.emptyList(),
                 TestConstants.FRAMEWORK_ID,
-                true,
-                Collections.emptyMap());
+                true);
 
         PortEvaluationStage portEvaluationStage = new PortEvaluationStage(portSpec,
                 TestConstants.TASK_NAME,
@@ -477,11 +472,10 @@ public class PortEvaluationStageTest extends DefaultCapabilitiesTestSuite {
                 podInstanceRequirement,
                 TestConstants.SERVICE_NAME,
                 UUID.randomUUID(),
-                SchedulerConfigTestUtils.getTestSchedulerConfig(),
+                OfferRequirementTestUtils.getTestSchedulerFlags(),
                 Collections.singleton(currentTaskBuilder.build()),
                 TestConstants.FRAMEWORK_ID,
-                true,
-                Collections.emptyMap());
+                true);
 
         // Omit 10,000 the expected port.
         offer = OfferTestUtils.getOffer(ResourceTestUtils.getUnreservedPorts(10001, 10050));
@@ -497,11 +491,10 @@ public class PortEvaluationStageTest extends DefaultCapabilitiesTestSuite {
                 podInstanceRequirement,
                 TestConstants.SERVICE_NAME,
                 UUID.randomUUID(),
-                SchedulerConfigTestUtils.getTestSchedulerConfig(),
+                OfferRequirementTestUtils.getTestSchedulerFlags(),
                 Collections.singleton(currentTaskBuilder.build()),
                 TestConstants.FRAMEWORK_ID,
-                true,
-                Collections.emptyMap());
+                true);
 
         mesosResourcePool = new MesosResourcePool(offer, Optional.of(Constants.ANY_ROLE));
         outcome = portEvaluationStage.evaluate(mesosResourcePool, podInfoBuilder);

@@ -1,15 +1,12 @@
-'''Utilities relating to creation and verification of Metronome jobs
+'''Utilities relating to creation and verification of Metronome jobs'''
 
-************************************************************************
-FOR THE TIME BEING WHATEVER MODIFICATIONS ARE APPLIED TO THIS FILE
-SHOULD ALSO BE APPLIED TO sdk_jobs IN ANY OTHER PARTNER REPOS
-************************************************************************
-'''
 import json
 import logging
+import os
+import tempfile
 import traceback
 
-import retrying
+import shakedown
 
 import sdk_cmd
 
@@ -19,14 +16,23 @@ log = logging.getLogger(__name__)
 # --- Install/uninstall jobs to the cluster
 
 
-def install_job(job_dict):
+def install_job(job_dict, tmp_dir=None):
     job_name = job_dict['id']
 
-    # attempt to delete current job, if any:
-    _remove_job_by_name(job_name)
+    if not tmp_dir:
+        tmp_dir = tempfile.mkdtemp(prefix='sdk-test')
+    out_filename = os.path.join(tmp_dir, '{}.json'.format(job_name))
+    job_str = json.dumps(job_dict)
+    log.info('Writing job file for {} to: {}\n{}'.format(job_name, out_filename, job_str))
+    with open(out_filename, 'w') as f:
+        f.write(job_str)
 
-    log.info('Adding job {}:\n{}'.format(job_name, json.dumps(job_dict)))
-    sdk_cmd.service_request('POST', 'metronome', '/v1/jobs', json=job_dict)
+    try:
+        _remove_job_by_name(job_name)
+    except:
+        log.info('Failed to remove any existing job named {} (this is likely as expected): {}'.format(
+            job_name, traceback.format_exc()))
+    sdk_cmd.run_cli('job add {}'.format(out_filename))
 
 
 def remove_job(job_dict):
@@ -34,15 +40,8 @@ def remove_job(job_dict):
 
 
 def _remove_job_by_name(job_name):
-    try:
-        # Metronome doesn't understand 'True' -- only 'true' will do.
-        sdk_cmd.service_request(
-            'DELETE', 'metronome', '/v1/jobs/{}'.format(job_name),
-            retry=False,
-            params={'stopCurrentJobRuns': 'true'})
-    except:
-        log.info('Failed to remove any existing job named {} (this is likely as expected):\n{}'.format(
-            job_name, traceback.format_exc()))
+    # force bit ensures that fail-looping jobs (with restart.policy=ON_FAILURE) are consistently removed:
+    sdk_cmd.run_cli('job remove {} --stop-current-job-runs'.format(job_name), print_output=False)
 
 
 class InstallJobContext(object):
@@ -52,8 +51,9 @@ class InstallJobContext(object):
         self.job_dicts = jobs
 
     def __enter__(self):
+        tmp_dir = tempfile.mkdtemp(prefix='sdk-test')
         for j in self.job_dicts:
-            install_job(j)
+            install_job(j, tmp_dir=tmp_dir)
 
     def __exit__(self, *args):
         for j in self.job_dicts:
@@ -66,38 +66,34 @@ class InstallJobContext(object):
 def run_job(job_dict, timeout_seconds=600, raise_on_failure=True):
     job_name = job_dict['id']
 
-    # Start job run, get run ID to poll against:
-    run_id = sdk_cmd.service_request('POST', 'metronome', '/v1/jobs/{}/runs'.format(job_name), log_args=False).json()['id']
-    log.info('Started job {}: run id {}'.format(job_name, run_id))
+    sdk_cmd.run_cli('job run {}'.format(job_name))
 
-    # Wait for run to succeed, throw if run fails:
-    @retrying.retry(
-        wait_fixed=1000,
-        stop_max_delay=timeout_seconds*1000,
-        retry_on_result=lambda res: not res)
-    def wait():
-        # Note: We COULD directly query the run here via /v1/jobs/<job_name>/runs/<run_id>, but that
-        # only works for active runs -- for whatever reason the run will disappear after it's done.
-        # Therefore we have to query the full run history from the parent job and find our run_id there.
-        run_history = sdk_cmd.service_request(
-            'GET', 'metronome', '/v1/jobs/{}'.format(job_name),
-            retry=False,
-            params={'embed': 'history'}).json()['history']
+    def wait_for_run_id():
+        runs = json.loads(sdk_cmd.run_cli('job show runs {} --json'.format(job_name)))
+        if len(runs) > 0:
+            return runs[0]['id']
+        return ''
+    run_id = shakedown.wait_for(wait_for_run_id, noisy=True, timeout_seconds=timeout_seconds, ignore_exceptions=False)
 
-        successful_run_ids = [run['id'] for run in run_history['successfulFinishedRuns']]
-        failed_run_ids = [run['id'] for run in run_history['failedFinishedRuns']]
+    def fun():
+        # catch errors from CLI: ensure that the only error raised is our own:
+        try:
+            runs = json.loads(sdk_cmd.run_cli(
+                'job history --show-failures --json {}'.format(job_name), print_output=False))
+        except:
+            log.info(traceback.format_exc())
+            return False
+
+        successful_ids = [r['id'] for r in runs['history']['successfulFinishedRuns']]
+        failed_ids = [r['id'] for r in runs['history']['failedFinishedRuns']]
 
         log.info('Job {} run history (waiting for successful {}): successful={} failed={}'.format(
-            job_name, run_id, successful_run_ids, failed_run_ids))
-
-        # Note: If a job has restart.policy=ON_FAILURE, it won't show up in failed_run_ids even when it fails.
-        #       Instead it will just keep restarting automatically until it succeeds or is deleted.
-        if raise_on_failure and run_id in failed_run_ids:
+            job_name, run_id, successful_ids, failed_ids))
+        # note: if a job has restart.policy=ON_FAILURE, it won't show up in failed_ids if it fails
+        if raise_on_failure and run_id in failed_ids:
             raise Exception('Job {} with id {} has failed, exiting early'.format(job_name, run_id))
-
-        return run_id in successful_run_ids
-
-    wait()
+        return run_id in successful_ids
+    shakedown.wait_for(fun, noisy=True, timeout_seconds=timeout_seconds, ignore_exceptions=False)
 
     return run_id
 

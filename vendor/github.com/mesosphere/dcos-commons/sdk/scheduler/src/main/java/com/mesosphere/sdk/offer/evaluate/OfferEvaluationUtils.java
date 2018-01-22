@@ -45,7 +45,7 @@ class OfferEvaluationUtils {
         }
     }
 
-    static ReserveEvaluationOutcome evaluateSimpleResource(
+    static ReserveEvaluationOutcome evaluateSimpleResource (
             OfferEvaluationStage offerEvaluationStage,
             ResourceSpec resourceSpec,
             Optional<String> resourceId,
@@ -107,13 +107,10 @@ class OfferEvaluationUtils {
         } else {
             Protos.Value difference = ValueUtils.subtract(resourceSpec.getValue(), mesosResource.getValue());
             if (ValueUtils.compare(difference, ValueUtils.getZero(difference.getType())) > 0) {
-                LOGGER.info("    Reservation for resource '{}' needs increasing from current '{}' to required '{}' " +
-                        "(add: '{}' from role: '{}')",
+                LOGGER.info("    Reservation for resource '{}' needs increasing from current {} to required {}",
                         resourceSpec.getName(),
                         TextFormat.shortDebugString(mesosResource.getValue()),
-                        TextFormat.shortDebugString(resourceSpec.getValue()),
-                        TextFormat.shortDebugString(difference),
-                        resourceSpec.getPreReservedRole());
+                        TextFormat.shortDebugString(resourceSpec.getValue()));
 
                 ResourceSpec requiredAdditionalResources = DefaultResourceSpec.newBuilder(resourceSpec)
                         .value(difference)
@@ -121,16 +118,14 @@ class OfferEvaluationUtils {
                 mesosResourceOptional = mesosResourcePool.consumeReservableMerged(
                         requiredAdditionalResources.getName(),
                         requiredAdditionalResources.getValue(),
-                        resourceSpec.getPreReservedRole());
+                        Constants.ANY_ROLE);
 
                 if (!mesosResourceOptional.isPresent()) {
                     return new ReserveEvaluationOutcome(
                             fail(offerEvaluationStage,
-                                    "Insufficient resources to increase reservation of existing resource '%s' with " +
-                                            "resourceId '%s': needed %s",
+                                    "Insufficient resources to increase reservation of resource '%s' with resourceId",
                                     resourceSpec,
-                                    resourceId,
-                                    TextFormat.shortDebugString(difference))
+                                    resourceId)
                                     .build(),
                             null);
                 }
@@ -155,14 +150,12 @@ class OfferEvaluationUtils {
                                 .build(),
                         ResourceUtils.getResourceId(resource).get());
             } else {
-                Protos.Value unreserve = ValueUtils.subtract(mesosResource.getValue(), resourceSpec.getValue());
-                LOGGER.info("    Reservation for resource '{}' needs decreasing from current {} to required {} " +
-                        "(subtract: {})",
+                LOGGER.info("    Reservation for resource '%s' needs decreasing from current %s to required {}",
                         resourceSpec.getName(),
                         TextFormat.shortDebugString(mesosResource.getValue()),
-                        TextFormat.shortDebugString(resourceSpec.getValue()),
-                        TextFormat.shortDebugString(unreserve));
+                        TextFormat.shortDebugString(resourceSpec.getValue()));
 
+                Protos.Value unreserve = ValueUtils.subtract(mesosResource.getValue(), resourceSpec.getValue());
                 Protos.Resource resource = ResourceBuilder.fromSpec(resourceSpec, resourceId)
                         .setValue(unreserve)
                         .build();

@@ -4,6 +4,7 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.mesosphere.sdk.offer.Constants;
 import com.mesosphere.sdk.offer.evaluate.placement.PlacementRule;
+import com.mesosphere.sdk.specification.util.RLimit;
 import com.mesosphere.sdk.specification.validation.UniqueTaskName;
 import com.mesosphere.sdk.specification.validation.ValidationUtils;
 import org.apache.commons.lang3.builder.EqualsBuilder;
@@ -28,14 +29,12 @@ public class DefaultPodSpec implements PodSpec {
     @NotNull
     @Min(0)
     private final Integer count;
-    @NotNull
-    private Boolean allowDecommission;
     @Size(min = 1)
     private String image;
     @Valid
     private Collection<NetworkSpec> networks;
     @Valid
-    private Collection<RLimitSpec> rlimits;
+    private Collection<RLimit> rlimits;
     @NotNull
     @Valid
     @Size(min = 1)
@@ -60,15 +59,14 @@ public class DefaultPodSpec implements PodSpec {
             @JsonProperty("count") Integer count,
             @JsonProperty("image") String image,
             @JsonProperty("networks") Collection<NetworkSpec> networks,
-            @JsonProperty("rlimits") Collection<RLimitSpec> rlimits,
+            @JsonProperty("rlimits") Collection<RLimit> rlimits,
             @JsonProperty("uris") Collection<URI> uris,
             @JsonProperty("task-specs") List<TaskSpec> tasks,
             @JsonProperty("placement-rule") PlacementRule placementRule,
             @JsonProperty("volumes") Collection<VolumeSpec> volumes,
             @JsonProperty("pre-reserved-role") String preReservedRole,
             @JsonProperty("secrets") Collection<SecretSpec> secrets,
-            @JsonProperty("share-pid-namespace") Boolean sharePidNamespace,
-            @JsonProperty("allow-decommission") Boolean allowDecommission) {
+            @JsonProperty("share-pid-namespace") Boolean sharePidNamespace) {
         this(
                 new Builder(Optional.empty()) // Assume that Executor URI is already present
                         .type(type)
@@ -83,13 +81,11 @@ public class DefaultPodSpec implements PodSpec {
                         .volumes(volumes)
                         .preReservedRole(preReservedRole)
                         .secrets(secrets)
-                        .sharePidNamespace(sharePidNamespace)
-                        .allowDecommission(allowDecommission));
+                        .sharePidNamespace(sharePidNamespace));
     }
 
     private DefaultPodSpec(Builder builder) {
         this.count = builder.count;
-        this.allowDecommission = builder.allowDecommission;
         this.image = builder.image;
         this.networks = builder.networks;
         this.placementRule = builder.placementRule;
@@ -112,7 +108,6 @@ public class DefaultPodSpec implements PodSpec {
     public static Builder newBuilder(PodSpec copy) {
         Builder builder = new Builder(Optional.empty()); // Assume that Executor URI is already present
         builder.count = copy.getCount();
-        builder.allowDecommission = copy.getAllowDecommission();
         builder.image = copy.getImage().isPresent() ? copy.getImage().get() : null;
         builder.networks = copy.getNetworks();
         builder.placementRule = copy.getPlacementRule().isPresent() ? copy.getPlacementRule().get() : null;
@@ -144,11 +139,6 @@ public class DefaultPodSpec implements PodSpec {
     }
 
     @Override
-    public Boolean getAllowDecommission() {
-        return allowDecommission;
-    }
-
-    @Override
     public Optional<String> getImage() {
         return Optional.ofNullable(image);
     }
@@ -159,7 +149,7 @@ public class DefaultPodSpec implements PodSpec {
     }
 
     @Override
-    public Collection<RLimitSpec> getRLimits() {
+    public Collection<RLimit> getRLimits() {
         return rlimits;
     }
 
@@ -222,12 +212,11 @@ public class DefaultPodSpec implements PodSpec {
         private String type;
         private String user;
         private Integer count;
-        private Boolean allowDecommission = false;
         private String image;
         private PlacementRule placementRule;
-        private String preReservedRole = Constants.ANY_ROLE;
+        public String preReservedRole = Constants.ANY_ROLE;
         private Collection<NetworkSpec> networks = new ArrayList<>();
-        private Collection<RLimitSpec> rlimits =  new ArrayList<>();
+        private Collection<RLimit> rlimits =  new ArrayList<>();
         private Collection<URI> uris = new ArrayList<>();
         private List<TaskSpec> tasks = new ArrayList<>();
         private Collection<VolumeSpec> volumes = new ArrayList<>();
@@ -272,17 +261,6 @@ public class DefaultPodSpec implements PodSpec {
         }
 
         /**
-         * Sets whether the {@link #count(Integer)} for this pod can ever be decreased in a config update.
-         *
-         * @param allowDecommission whether the count can be decreased in a config update
-         * @return a reference to this Builder
-         */
-        public Builder allowDecommission(Boolean allowDecommission) {
-            this.allowDecommission = allowDecommission != null && allowDecommission;
-            return this;
-        }
-
-        /**
          * Sets the {@code image} and returns a reference to this Builder so that the methods can be
          * chained together.
          *
@@ -318,7 +296,7 @@ public class DefaultPodSpec implements PodSpec {
          * @param rlimits the {@code rlimits} to set
          * @return a reference to this Builder
          */
-        public Builder rlimits(Collection<RLimitSpec> rlimits) {
+        public Builder rlimits(Collection<RLimit> rlimits) {
             if (rlimits == null) {
                 this.rlimits = new ArrayList<>();
             } else {
@@ -354,6 +332,7 @@ public class DefaultPodSpec implements PodSpec {
             this.uris.add(uri);
             return this;
         }
+
 
         /**
          * Sets the {@code tasks} and returns a reference to this Builder so that the methods can be chained together.

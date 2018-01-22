@@ -82,11 +82,6 @@ public class MarathonConstraintParserTest {
         assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['rack-id', 'GROUP_BY', '3']")).toString());
         assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "rack-id:GROUP_BY:3").toString());
 
-        constraintStr = MarathonConstraintParser.parse(POD_NAME, unescape("[['zone', 'GROUP_BY', '3']]")).toString();
-        assertEquals("RoundRobinByAttributeRule{attribute=zone, attribute-count=Optional[3], task-filter=RegexMatcher{pattern='hello-.*'}}", constraintStr);
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['zone', 'GROUP_BY', '3']")).toString());
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "zone:GROUP_BY:3").toString());
-
         constraintStr = MarathonConstraintParser.parse(POD_NAME, unescape("[['hostname', 'GROUP_BY']]")).toString();
         assertEquals("RoundRobinByHostnameRule{agent-count=Optional.empty, task-filter=RegexMatcher{pattern='hello-.*'}}", constraintStr);
         assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['hostname', 'GROUP_BY']")).toString());
@@ -110,29 +105,6 @@ public class MarathonConstraintParserTest {
         assertEquals("HostnameRule{matcher=RegexMatcher{pattern='rack-[1-3]'}}", constraintStr);
         assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['hostname', 'LIKE', 'rack-[1-3]']")).toString());
         assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "hostname:LIKE:rack-[1-3]").toString());
-    }
-
-    @Test
-    public void testIsOperator() throws IOException {
-        String constraintStr = MarathonConstraintParser.parse(POD_NAME, unescape("[['foo', 'IS', 'bar']]")).toString();
-        assertEquals("AttributeRule{matcher=ExactMatcher{str='foo:bar'}}", constraintStr);
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['foo', 'IS', 'bar']")).toString());
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "foo:IS:bar").toString());
-
-        constraintStr = MarathonConstraintParser.parse(POD_NAME, unescape("[['@region', 'IS', 'bar']]")).toString();
-        assertEquals("RegionRule{matcher=ExactMatcher{str='bar'}}", constraintStr);
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['@region', 'IS', 'bar']")).toString());
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "@region:IS:bar").toString());
-
-        constraintStr = MarathonConstraintParser.parse(POD_NAME, unescape("[['@zone', 'IS', 'bar']]")).toString();
-        assertEquals("ZoneRule{matcher=ExactMatcher{str='bar'}}", constraintStr);
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['@zone', 'IS', 'bar']")).toString());
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "@zone:IS:bar").toString());
-
-        constraintStr = MarathonConstraintParser.parse(POD_NAME, unescape("[['@hostname', 'IS', 'bar']]")).toString();
-        assertEquals("HostnameRule{matcher=ExactMatcher{str='bar'}}", constraintStr);
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, unescape("['@hostname', 'IS', 'bar']")).toString());
-        assertEquals(constraintStr, MarathonConstraintParser.parse(POD_NAME, "@hostname:IS:bar").toString());
     }
 
     @Test
@@ -206,11 +178,6 @@ public class MarathonConstraintParserTest {
     @Test
     public void testEmptyConstraint() throws IOException {
         assertEquals("PassthroughRule{}", MarathonConstraintParser.parse(POD_NAME, "").toString());
-    }
-
-    @Test
-    public void testEmptyArrayConstraint() throws IOException {
-        assertEquals("PassthroughRule{}", MarathonConstraintParser.parse(POD_NAME, "[]").toString());
     }
 
     @Test(expected = IOException.class)

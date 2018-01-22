@@ -1,13 +1,16 @@
 {
   "assets": {
+    "container": {
+      "docker": {
+        "cassandra": "mesosphere/cassandra:1.0.26-3.0.10"
+      }
+    },
     "uris": {
       "jre-tar-gz": "{{jre-url}}",
       "cassandra-jre-tar-gz": "{{jre-url}}",
-      "cassandra-python-tar-gz": "https://downloads.mesosphere.com/cassandra/assets/python-2.7.14.tar.gz",
-      "cassandra-openssl-tar-gz": "https://downloads.mesosphere.com/cassandra/assets/openssl-1.0.2n-libs.tar.gz",
       "libmesos-bundle-tar-gz": "{{libmesos-bundle-url}}",
       "scheduler-zip": "{{artifact-dir}}/cassandra-scheduler.zip",
-      "cassandra-tar-gz": "https://downloads.mesosphere.com/cassandra/assets/apache-cassandra-3.0.15-bin-dcos.tar.gz",
+      "cassandra-tar-gz": "https://downloads.mesosphere.com/cassandra/assets/apache-cassandra-3.0.14-bin-dcos.tar.gz",
       "bootstrap-zip": "{{artifact-dir}}/bootstrap.zip",
       "executor-zip": "{{artifact-dir}}/executor.zip"
     }
@@ -21,21 +24,36 @@
     "binaries": {
       "darwin": {
         "x86-64": {
-          "contentHash": [ { "algo": "sha256", "value": "{{sha256:dcos-service-cli-darwin}}" } ],
+          "contentHash": [
+            {
+              "algo": "sha256",
+              "value": "{{sha256:dcos-service-cli-darwin}}"
+            }
+          ],
           "kind": "executable",
           "url": "{{artifact-dir}}/dcos-service-cli-darwin"
         }
       },
       "linux": {
         "x86-64": {
-          "contentHash": [ { "algo": "sha256", "value": "{{sha256:dcos-service-cli-linux}}" } ],
+          "contentHash": [
+            {
+              "algo": "sha256",
+              "value": "{{sha256:dcos-service-cli-linux}}"
+            }
+          ],
           "kind": "executable",
           "url": "{{artifact-dir}}/dcos-service-cli-linux"
         }
       },
       "windows": {
         "x86-64": {
-          "contentHash": [ { "algo": "sha256", "value": "{{sha256:dcos-service-cli.exe}}" } ],
+          "contentHash": [
+            {
+              "algo": "sha256",
+              "value": "{{sha256:dcos-service-cli.exe}}"
+            }
+          ],
           "kind": "executable",
           "url": "{{artifact-dir}}/dcos-service-cli.exe"
         }

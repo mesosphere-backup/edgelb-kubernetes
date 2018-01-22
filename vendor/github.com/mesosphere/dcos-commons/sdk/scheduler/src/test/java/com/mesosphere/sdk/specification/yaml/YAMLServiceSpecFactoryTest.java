@@ -1,6 +1,8 @@
 package com.mesosphere.sdk.specification.yaml;
 
-import com.mesosphere.sdk.scheduler.SchedulerConfig;
+import org.apache.commons.io.FileUtils;
+
+import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.specification.DefaultServiceSpec;
 import com.mesosphere.sdk.testutils.TestConstants;
 
@@ -22,8 +24,8 @@ public class YAMLServiceSpecFactoryTest {
         YAML_ENV_MAP.put("PORT_API", String.valueOf(TestConstants.PORT_API_VALUE));
     }
 
-    @Mock private SchedulerConfig mockSchedulerConfig;
-    @Mock private YAMLToInternalMappers.ConfigTemplateReader mockConfigTemplateReader;
+    @Mock private SchedulerFlags mockFlags;
+    @Mock private YAMLToInternalMappers.FileReader mockFileReader;
 
     @Before
     public void beforeEach() {
@@ -35,14 +37,14 @@ public class YAMLServiceSpecFactoryTest {
         ClassLoader classLoader = getClass().getClassLoader();
         File file = new File(classLoader.getResource("valid-exhaustive.yml").getFile());
 
-        when(mockConfigTemplateReader.read("config-one.conf.mustache")).thenReturn("hello");
-        when(mockConfigTemplateReader.read("config-two.xml.mustache")).thenReturn("hey");
-        when(mockConfigTemplateReader.read("config-three.conf.mustache")).thenReturn("hi");
-        when(mockSchedulerConfig.getApiServerPort()).thenReturn(123);
-        when(mockSchedulerConfig.getExecutorURI()).thenReturn("test-executor-uri");
+        when(mockFileReader.read("config-one.conf.mustache")).thenReturn("hello");
+        when(mockFileReader.read("config-two.xml.mustache")).thenReturn("hey");
+        when(mockFileReader.read("config-three.conf.mustache")).thenReturn("hi");
+        when(mockFlags.getApiServerPort()).thenReturn(123);
+        when(mockFlags.getExecutorURI()).thenReturn("test-executor-uri");
 
-        DefaultServiceSpec serviceSpec = DefaultServiceSpec.newGenerator(file, mockSchedulerConfig)
-                .setConfigTemplateReader(mockConfigTemplateReader)
+        DefaultServiceSpec serviceSpec = DefaultServiceSpec.newGenerator(RawServiceSpec.newBuilder(file).build(), mockFlags)
+                .setFileReader(mockFileReader)
                 .build();
         Assert.assertNotNull(serviceSpec);
     }
@@ -52,6 +54,15 @@ public class YAMLServiceSpecFactoryTest {
         ClassLoader classLoader = getClass().getClassLoader();
         File file = new File(classLoader.getResource("valid-exhaustive.yml").getFile());
         RawServiceSpec rawServiceSpec = RawServiceSpec.newBuilder(file).setEnv(YAML_ENV_MAP).build();
+        Assert.assertNotNull(rawServiceSpec);
+    }
+
+    @Test
+    public void testGenerateRawSpecFromYAMLString() throws Exception {
+        ClassLoader classLoader = getClass().getClassLoader();
+        File file = new File(classLoader.getResource("valid-exhaustive.yml").getFile());
+        String yaml = FileUtils.readFileToString(file);
+        RawServiceSpec rawServiceSpec = RawServiceSpec.newBuilder(yaml).setEnv(YAML_ENV_MAP).build();
         Assert.assertNotNull(rawServiceSpec);
     }
 }

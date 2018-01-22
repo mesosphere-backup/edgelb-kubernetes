@@ -1,73 +1,39 @@
 ---
-layout: layout.pug
-navigationTitle: 
-excerpt:
-title: Release Notes
-menuWeight: 120
-
+post_title: Release Notes
+menu_order: 120
+enterprise: 'no'
 ---
 
-## Version 2.0.4-2.6.0-cdh5.11.0
+# Version 2.0.2-2.6.0-cdh5.11.0
 
 ### Bug Fixes
-- Placement constraints are now exposed.
-
-## Version 2.1.1-2.6.0-cdh5.11.0-beta
-
-## NOTICE
-
-This is a beta release of the DC/OS Apache HDFS framework. It contains multiple improvements as well as new features that are to be considered of beta quality. Do _not_ operate this version in production.
-
-### New Features
-- Support for HDFS rack awareness using DC/OS zones on DC/OS 1.11+
-
-### Bug Fixes
-- Scheduler health check now passes during service uninstall.
-- Fixed a regression in replacing failed pods on failed agents.
-- Replacing a pod on a failed agent now no longer waits for Mesos to register the agent as lost.
-
-## Verion 3.0.0-2.6.0-cdh5.11.0-beta
-
-## NOTICE
-
-This is a beta release of the DC/OS HDFS framework. It contains multiple improvements as well as new features that are to be considered of beta quality. Do _not_ operate this version in production.
-
-### New features
-- Support for the automated provisioning of TLS artifacts to secure HDFS communication.
-- Support for Kerberos authorization and authentication.
-
-### Updates
-- Major improvements to the stability and performance of service orchestration.
-
-## Version 2.0.3-2.6.0-cdh5.11.0
-
-### Bug Fixes
-* Dashes in envvars replaced with underscores to support Ubuntu.
-* Some numeric configuration parameters could be interpreted incorrectly as floats, and are fixed.
-* Uninstall now handles failed tasks correctly.
-
-## Version 2.0.0-2.6.0-cdh5.11.0
+N/A
 
 ### Improvements
-- Enhanced inter-node checks for journal and name nodes.
-- Upgrade to [dcos-commons 0.30.0](https://github.com/mesosphere/dcos-commons/releases/tag/0.30.0).
+
+* Added many additional configuration options.
+* Improved handling of error codes in service CLI.
+
+# Version  2.0.1-2.6.0-cdh5.11.0
 
 ### Bug Fixes
-- Numerous fixes and enhancements to service reliability.
+* Tasks will correctly bind on DC/OS 1.10.
 
-## Version 1.3.3-2.6.0-cdh5.11.0-beta
+## Documentation
+* Updated post-install links for package.
+* Updated `limitations.md`.
+* Ensured previous `version-policy.md` content is present.
 
-### New Features
-- Installation in folders is supported
-- Use of a CNI network is supported
+# Version 2.0.0-2.6.0-cdh5.11.0
 
-### Improvements
-- Upgraded to [dcos-commons 0.20.1](https://github.com/mesosphere/dcos-commons/releases/tag/0.20.1)
-- Upgraded to `cdh 5.11.0`
-- Default user is now `nobody`
-- Allow configuration of scheduler log level
-- Added a readiness check to journal nodes
+## Improvements
+- Based on the latest stable release of the dcos-commons SDK, which provides numerous benefits:
+  - Integration with DC/OS features such as virtual networking and integration with DC/OS access controls.
+  - Orchestrated software and configuration update, enforcement of version upgrade paths, and ability to pause/resume updates.
+  - Placement constraints for pods.
+  - Uniform user experience across a variety of services.
+- Update to 2.6.0-cdh5.11.0 version of the Cloudera distribution of Apache HDFS.
+- Support replacement and recovery of journal and name nodes.
 
-### Documentation
-- Pre-install notes include five agent pre-requisite
-- Updated CLI documentation
+## Breaking Changes
+- This is a major release.  You cannot upgrade to 2.0.0-2.6.0-cdh5.11.0 from a 1.0.x version of the package.  To upgrade, you must perform a fresh install and restore from a backup.

@@ -16,6 +16,8 @@ import (
 	"github.com/mesosphere/dcos-commons/cli/config"
 )
 
+const cosmosURLConfigKey = "package.cosmos_url"
+
 // Cosmos error types
 const (
 	appIDChanged        = "AppIdChanged"
@@ -63,22 +65,20 @@ type cosmosErrorResponse struct {
 
 func createBadVersionError(data cosmosData) error {
 	var buf bytes.Buffer
-	writer := bufio.NewWriter(&buf)
-	fmt.Fprintf(writer, "Unable to update %s to requested version: \"%s\"\n", config.ServiceName, data.UpdateVersion)
+	buf.WriteString(fmt.Sprintf("Unable to update %s to requested version: \"%s\"\n", config.ServiceName, data.UpdateVersion))
 	if len(data.ValidVersions) > 0 {
-		fmt.Fprintf(writer, "Valid package versions are: %s", PrettyPrintSlice(data.ValidVersions))
+		validVersions := PrettyPrintSlice(data.ValidVersions)
+		buf.WriteString(fmt.Sprintf("Valid package versions are: %s", validVersions))
 	} else {
-		fmt.Fprint(writer, "No valid package versions to update to.")
+		buf.WriteString("No valid package versions to update to.")
 	}
-	writer.Flush()
 	return fmt.Errorf(buf.String())
 }
-
 func createJSONMismatchError(data cosmosData) error {
 	var buf bytes.Buffer
 	writer := bufio.NewWriter(&buf)
-	fmt.Fprintf(writer, "Unable to update %s to requested configuration: options JSON failed validation.\n\n", config.ServiceName)
-
+	writer.WriteString("Unable to update %s to requested configuration: options JSON failed validation.")
+	writer.WriteString("\n\n")
 	tWriter := tabwriter.NewWriter(writer, 0, 4, 1, ' ', 0)
 	fmt.Fprintf(tWriter, "Field\tError\t\n")
 	fmt.Fprintf(tWriter, "-----\t-----\t")
@@ -87,7 +87,7 @@ func createJSONMismatchError(data cosmosData) error {
 	}
 	tWriter.Flush()
 	writer.Flush()
-	return fmt.Errorf(buf.String())
+	return fmt.Errorf(buf.String(), config.ServiceName)
 }
 
 func createAppIDChangedError(data cosmosData) error {
@@ -96,52 +96,43 @@ The service name cannot be changed once installed. Ensure service.name is set to
 	return fmt.Errorf(errorString, data.OldAppID, data.NewAppID, data.OldAppID)
 }
 
-func createAppNotFoundError(data cosmosData) error {
-	errorString := `Unable to find the service named '%s'.
-Possible causes:
-- Did you provide the correct service name? Specify a service name with '--name=<name>', or with 'dcos config set %s.service_name <name>'.
-- Was the service recently installed or updated? It may still be initializing, wait a bit and try again.`
-	return fmt.Errorf(errorString, config.ServiceName, config.ModuleName)
-}
-
 func parseCosmosHTTPErrorResponse(response *http.Response, body []byte) error {
 	var errorResponse cosmosErrorResponse
 	err := json.Unmarshal(body, &errorResponse)
 	if err != nil {
-		printMessage("Error unmarshalling Cosmos Error: %v", err.Error())
-		return createResponseError(response, body)
+		printMessage("Error unmarshalling cosmosErrorResponse: %v", err.Error())
+		return createResponseError(response)
 	}
-	if errorResponse.ErrorType == "" {
-		return createResponseError(response, body)
-	}
-	switch errorResponse.ErrorType {
-	case badVersionUpdate:
-		return createBadVersionError(errorResponse.Data)
-	case jsonSchemaMismatch:
-		return createJSONMismatchError(errorResponse.Data)
-	case appIDChanged:
-		return createAppIDChangedError(errorResponse.Data)
-	case marathonAppNotFound:
-		return createAppNotFoundError(errorResponse.Data)
-	default:
-		if config.Verbose {
-			PrintJSONBytes(body)
+	if errorResponse.ErrorType != "" {
+		switch errorResponse.ErrorType {
+		case appIDChanged:
+			return createAppIDChangedError(errorResponse.Data)
+		case badVersionUpdate:
+			return createBadVersionError(errorResponse.Data)
+		case jsonSchemaMismatch:
+			return createJSONMismatchError(errorResponse.Data)
+		case marathonAppNotFound:
+			return createServiceNameError()
+		default:
+			if config.Verbose {
+				PrintJSONBytes(body)
+			}
+			return fmt.Errorf("Could not execute command: %s", errorResponse.Message)
 		}
-		return fmt.Errorf("Could not execute command: %s (%s)", errorResponse.Message, errorResponse.ErrorType)
 	}
+	return createResponseError(response)
 }
 
 func checkCosmosHTTPResponse(response *http.Response, body []byte) error {
 	switch {
 	case response.StatusCode == http.StatusNotFound:
-		PrintVerbose(createResponseError(response, body).Error())
-		return fmt.Errorf("This command requires Enterprise DC/OS 1.10 or newer.")
+		if config.Verbose {
+			printResponseError(response)
+		}
+		return fmt.Errorf("dcos %s %s requires Enterprise DC/OS 1.10 or newer.", config.ModuleName, config.Command)
 	case response.StatusCode == http.StatusBadRequest:
 		return parseCosmosHTTPErrorResponse(response, body)
-	case response.StatusCode == http.StatusInternalServerError:
-		return createResponseError(response, body)
 	}
-	// Fall back to defaultResponseCheck()
 	return nil
 }
 
@@ -155,12 +146,17 @@ func createCosmosHTTPJSONRequest(method, urlPath, jsonPayload string) *http.Requ
 }
 
 func createCosmosURL(urlPath string) *url.URL {
-	cosmosURL := OptionalCLIConfigValue("package.cosmos_url")
-	if len(cosmosURL) > 0 {
-		// Use specified Cosmos URL: https://<cosmos_url>/service/describe
-		return CreateURL(cosmosURL, path.Join("service", urlPath), "")
-	} else {
-		// Use default Cosmos service path within DC/OS: https://<dcos_url>/cosmos/service/describe
-		return CreateURL(GetDCOSURL(), path.Join("cosmos", "service", urlPath), "")
+	// Try to fetch the Cosmos URL from the system configuration
+	if len(config.CosmosURL) == 0 {
+		config.CosmosURL = OptionalCLIConfigValue(cosmosURLConfigKey)
 	}
+
+	// Use Cosmos URL if we have it specified
+	if len(config.CosmosURL) > 0 {
+		joinedURLPath := path.Join("service", urlPath) // e.g. https://<cosmos_url>/service/describe
+		return CreateURL(config.CosmosURL, joinedURLPath, "")
+	}
+	GetDCOSURL()
+	joinedURLPath := path.Join("cosmos", "service", urlPath) // e.g. https://<dcos_url>/cosmos/service/describe
+	return CreateURL(config.DcosURL, joinedURLPath, "")
 }

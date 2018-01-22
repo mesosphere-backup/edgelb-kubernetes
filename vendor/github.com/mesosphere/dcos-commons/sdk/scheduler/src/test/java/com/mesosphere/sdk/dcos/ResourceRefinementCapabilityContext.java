@@ -15,20 +15,30 @@ package com.mesosphere.sdk.dcos;
  */
 public class ResourceRefinementCapabilityContext {
     private final Capabilities originalCapabilities;
-    private final Capabilities testCapabilities;
+    private final ResourceRefinementCapabilities testCapabilities;
 
     public ResourceRefinementCapabilityContext(Capabilities originalCapabilities) {
         this.originalCapabilities = originalCapabilities;
-        this.testCapabilities = new Capabilities(originalCapabilities.getDcosVersion()) {
-            @Override
-            public boolean supportsPreReservedResources() {
-                return true;
-            }
-        };
+        this.testCapabilities = new ResourceRefinementCapabilities(originalCapabilities);
         Capabilities.overrideCapabilities(testCapabilities);
     }
 
     public void reset() {
         Capabilities.overrideCapabilities(originalCapabilities);
+    }
+
+    private static class ResourceRefinementCapabilities extends Capabilities {
+        public ResourceRefinementCapabilities(Capabilities capabilities) {
+            this(capabilities.dcosCluster);
+        }
+
+        private ResourceRefinementCapabilities(DcosCluster dcosCluster) {
+            super(dcosCluster);
+        }
+
+        @Override
+        public boolean supportsPreReservedResources() {
+            return true;
+        }
     }
 }

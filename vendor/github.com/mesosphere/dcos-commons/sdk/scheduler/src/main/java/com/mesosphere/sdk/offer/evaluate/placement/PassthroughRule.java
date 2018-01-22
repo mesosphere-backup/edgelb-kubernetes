@@ -1,7 +1,6 @@
 package com.mesosphere.sdk.offer.evaluate.placement;
 
 import java.util.Collection;
-import java.util.Collections;
 
 import com.mesosphere.sdk.specification.PodInstance;
 import org.apache.commons.lang3.builder.EqualsBuilder;
@@ -23,11 +22,6 @@ public class PassthroughRule implements PlacementRule {
     @Override
     public EvaluationOutcome filter(Offer offer, PodInstance podInstance, Collection<TaskInfo> tasks) {
         return EvaluationOutcome.pass(this, "Passthrough rule always passes.").build();
-    }
-
-    @Override
-    public Collection<PlacementField> getPlacementFields() {
-        return Collections.emptyList();
     }
 
     @Override

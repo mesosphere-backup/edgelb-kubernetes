@@ -1,5 +1,6 @@
 package com.mesosphere.sdk.scheduler.plan;
 
+import com.mesosphere.sdk.offer.InvalidRequirementException;
 import com.mesosphere.sdk.specification.PodInstance;
 import com.mesosphere.sdk.specification.TaskSpec;
 
@@ -11,5 +12,6 @@ import java.util.Collection;
  * needed.
  */
 public interface StepFactory {
-    Step getStep(PodInstance podInstance, Collection<String> tasksToLaunch);
+    Step getStep(PodInstance podInstance, Collection<String> tasksToLaunch)
+            throws Step.InvalidStepException, InvalidRequirementException;
 }

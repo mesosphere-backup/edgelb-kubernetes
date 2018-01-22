@@ -11,10 +11,9 @@ import (
 	"net/http"
 
 	"github.com/mesosphere/dcos-commons/cli/client"
+	"github.com/mesosphere/dcos-commons/cli/config"
 	"gopkg.in/alecthomas/kingpin.v3-unstable"
 )
-
-const UNKNOWN_VALUE = "<UNKNOWN>"
 
 var errPlanStatus417 = errors.New("plan endpoint returned HTTP status code 417")
 
@@ -126,6 +125,7 @@ func forceComplete(planName, phase, step string) {
 }
 
 func (cmd *planHandler) handleForceComplete(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	forceComplete(cmd.getPlanName(), cmd.Phase, cmd.Step)
 	return nil
 }
@@ -157,11 +157,13 @@ func restart(planName, phase, step string) {
 }
 
 func (cmd *planHandler) handleForceRestart(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	restart(cmd.getPlanName(), cmd.Phase, cmd.Step)
 	return nil
 }
 
 func (cmd *planHandler) handleList(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	responseBytes, err := client.HTTPServiceGet("v1/plans")
 	if err != nil {
 		client.PrintMessageAndExit(err.Error())
@@ -186,6 +188,7 @@ func pause(planName, phase string) error {
 }
 
 func (cmd *planHandler) handlePause(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	err := pause(cmd.getPlanName(), cmd.Phase)
 	if err != nil {
 		client.PrintMessageAndExit(err.Error())
@@ -209,6 +212,7 @@ func resume(planName, phase string) error {
 }
 
 func (cmd *planHandler) handleResume(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	err := resume(cmd.getPlanName(), cmd.Phase)
 	if err != nil {
 		client.PrintMessageAndExit(err.Error())
@@ -217,6 +221,7 @@ func (cmd *planHandler) handleResume(a *kingpin.Application, e *kingpin.ParseEle
 }
 
 func (cmd *planHandler) handleStart(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	payload := "{}"
 	if len(cmd.Parameters) > 0 {
 		parameterPayload, err := getPlanParameterPayload(cmd.Parameters)
@@ -226,7 +231,7 @@ func (cmd *planHandler) handleStart(a *kingpin.Application, e *kingpin.ParseElem
 		payload = parameterPayload
 	}
 	client.SetCustomResponseCheck(checkPlansResponse)
-	responseBytes, err := client.HTTPServicePostJSON(fmt.Sprintf("v1/plans/%s/start", cmd.PlanName), payload)
+	responseBytes, err := client.HTTPServicePostData(fmt.Sprintf("v1/plans/%s/start", cmd.PlanName), payload, "application/json")
 	if err != nil {
 		client.PrintMessageAndExit(err.Error())
 	}
@@ -244,16 +249,18 @@ func printStatus(planName string, rawJSON bool) {
 	if rawJSON {
 		client.PrintJSONBytes(responseBytes)
 	} else {
-		client.PrintMessage(toPlanStatusTree(planName, responseBytes))
+		client.PrintMessage(toStatusTree(planName, responseBytes))
 	}
 }
 
 func (cmd *planHandler) handleStatus(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	printStatus(cmd.getPlanName(), cmd.RawJSON)
 	return nil
 }
 
 func (cmd *planHandler) handleStop(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	client.SetCustomResponseCheck(checkPlansResponse)
 	responseBytes, err := client.HTTPServicePost(fmt.Sprintf("v1/plans/%s/stop", cmd.PlanName))
 	if err != nil {
@@ -301,31 +308,27 @@ func HandlePlanSection(app *kingpin.Application) {
 	forceComplete.Arg("step", "Name or UUID of step to be restarted").Required().StringVar(&cmd.Step)
 }
 
-func toPlanStatusTree(planName string, planJSONBytes []byte) string {
-	planJSON, err := client.UnmarshalJSON(planJSONBytes)
+func toStatusTree(planName string, planJSONBytes []byte) string {
+	optionsJSON, err := client.UnmarshalJSON(planJSONBytes)
 	if err != nil {
 		client.PrintMessageAndExit(fmt.Sprintf("Failed to parse JSON in plan response: %s", err))
 	}
 	var buf bytes.Buffer
 
-	planStatus, ok := planJSON["status"]
+	planStatus, ok := optionsJSON["status"]
 	if !ok {
-		planStatus = UNKNOWN_VALUE
+		planStatus = "<UNKNOWN>"
 	}
-	planStrategy, ok := planJSON["strategy"]
-	if !ok {
-		planStrategy = UNKNOWN_VALUE
-	}
-	buf.WriteString(fmt.Sprintf("%s (%s strategy) (%s)\n", planName, planStrategy, planStatus))
+	buf.WriteString(fmt.Sprintf("%s (%s)\n", planName, planStatus))
 
-	rawPhases, ok := planJSON["phases"].([]interface{})
+	phases, ok := optionsJSON["phases"].([]interface{})
 	if ok {
-		for i, rawPhase := range rawPhases {
-			appendPhase(&buf, rawPhase, i == len(rawPhases)-1)
+		for i, rawPhase := range phases {
+			appendPhase(&buf, rawPhase, i == len(phases)-1)
 		}
 	}
 
-	errors, ok := planJSON["errors"].([]interface{})
+	errors, ok := optionsJSON["errors"].([]interface{})
 	if ok && len(errors) > 0 {
 		buf.WriteString("\nErrors:\n")
 		for _, error := range errors {
@@ -333,18 +336,18 @@ func toPlanStatusTree(planName string, planJSONBytes []byte) string {
 		}
 	}
 
-	return strings.TrimRight(buf.String(), "\n")
+	// Trim extra newline from end:
+	buf.Truncate(buf.Len() - 1)
+
+	return buf.String()
 }
 
 func appendPhase(buf *bytes.Buffer, rawPhase interface{}, lastPhase bool) {
 	var phasePrefix string
-	var stepPrefix string
 	if lastPhase {
 		phasePrefix = "└─ "
-		stepPrefix = "   "
 	} else {
 		phasePrefix = "├─ "
-		stepPrefix = "│  "
 	}
 
 	phase, ok := rawPhase.(map[string]interface{})
@@ -352,55 +355,49 @@ func appendPhase(buf *bytes.Buffer, rawPhase interface{}, lastPhase bool) {
 		return
 	}
 
-	buf.WriteString(fmt.Sprintf("%s%s\n", phasePrefix, phaseString(phase)))
+	buf.WriteString(elementString(phasePrefix, phase))
 
-	rawSteps, ok := phase["steps"].([]interface{})
+	steps, ok := phase["steps"].([]interface{})
 	if !ok {
 		return
 	}
-	for i, rawStep := range rawSteps {
-		appendStep(buf, rawStep, stepPrefix, i == len(rawSteps)-1)
+	for i, rawStep := range steps {
+		appendStep(buf, rawStep, lastPhase, i == len(steps)-1)
 	}
 }
 
-func appendStep(buf *bytes.Buffer, rawStep interface{}, prefix string, lastStep bool) {
+func appendStep(buf *bytes.Buffer, rawStep interface{}, lastPhase bool, lastStep bool) {
+	var stepPrefix string
+	if lastPhase {
+		if lastStep {
+			stepPrefix = "   └─ "
+		} else {
+			stepPrefix = "   ├─ "
+		}
+	} else {
+		if lastStep {
+			stepPrefix = "│  └─ "
+		} else {
+			stepPrefix = "│  ├─ "
+		}
+	}
+
 	step, ok := rawStep.(map[string]interface{})
 	if !ok {
 		return
 	}
 
-	if lastStep {
-		prefix += "└─ "
-	} else {
-		prefix += "├─ "
-	}
-	buf.WriteString(fmt.Sprintf("%s%s\n", prefix, stepString(step)))
+	buf.WriteString(elementString(stepPrefix, step))
 }
 
-func phaseString(phase map[string]interface{}) string {
-	phaseName, ok := phase["name"]
+func elementString(prefix string, element map[string]interface{}) string {
+	elementName, ok := element["name"]
 	if !ok {
-		phaseName = UNKNOWN_VALUE
+		elementName = "<UNKNOWN>"
 	}
-	phaseStrategy, ok := phase["strategy"]
+	elementStatus, ok := element["status"]
 	if !ok {
-		phaseStrategy = UNKNOWN_VALUE
+		elementStatus = "<UNKNOWN>"
 	}
-	phaseStatus, ok := phase["status"]
-	if !ok {
-		phaseStatus = UNKNOWN_VALUE
-	}
-	return fmt.Sprintf("%s (%s strategy) (%s)", phaseName, phaseStrategy, phaseStatus)
-}
-
-func stepString(step map[string]interface{}) string {
-	stepName, ok := step["name"]
-	if !ok {
-		stepName = UNKNOWN_VALUE
-	}
-	stepStatus, ok := step["status"]
-	if !ok {
-		stepStatus = UNKNOWN_VALUE
-	}
-	return fmt.Sprintf("%s (%s)", stepName, stepStatus)
+	return fmt.Sprintf("%s%s (%s)\n", prefix, elementName, elementStatus)
 }

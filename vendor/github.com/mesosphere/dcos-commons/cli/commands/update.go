@@ -29,6 +29,7 @@ func reportErrorAndExit(err error, responseBytes []byte) {
 }
 
 func describe() {
+	// TODO: figure out KingPin's error handling
 	requestContent, err := json.Marshal(describeRequest{config.ServiceName})
 	if err != nil {
 		client.PrintMessageAndExit(err.Error())
@@ -45,11 +46,12 @@ func describe() {
 		client.PrintJSONBytes(resolvedOptionsBytes)
 	} else {
 		client.PrintMessage("Package configuration is not available for service %s.", config.ServiceName)
-		client.PrintMessage("This command is only available for packages installed with Enterprise DC/OS 1.10 or newer.")
+		client.PrintMessage("dcos %s %s is only available for packages installed with Enterprise DC/OS 1.10 or newer.", config.ModuleName, config.Command)
 	}
 }
 
 func (cmd *describeHandler) handleDescribe(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	describe()
 	return nil
 }
@@ -76,6 +78,7 @@ type updateRequest struct {
 }
 
 func printPackageVersions() {
+	// TODO: figure out KingPin's error handling
 	requestContent, _ := json.Marshal(describeRequest{config.ServiceName})
 	responseBytes, err := client.HTTPCosmosPostJSON("describe", string(requestContent))
 	if err != nil {
@@ -107,6 +110,7 @@ func printPackageVersions() {
 }
 
 func (cmd *updateHandler) ViewPackageVersions(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	printPackageVersions()
 	return nil
 }
@@ -161,6 +165,7 @@ func doUpdate(optionsFile, packageVersion string, replace bool) {
 }
 
 func (cmd *updateHandler) UpdateConfiguration(a *kingpin.Application, e *kingpin.ParseElement, c *kingpin.ParseContext) error {
+	config.Command = c.SelectedCommand.FullCommand()
 	doUpdate(cmd.OptionsFile, cmd.PackageVersion, cmd.Replace)
 	return nil
 }

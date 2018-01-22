@@ -1,15 +1,13 @@
 package com.mesosphere.sdk.scheduler.plan;
 
-import com.mesosphere.sdk.scheduler.SchedulerConfig;
+import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.specification.*;
 import com.mesosphere.sdk.state.ConfigStore;
 import com.mesosphere.sdk.state.StateStore;
 import com.mesosphere.sdk.storage.MemPersister;
 import com.mesosphere.sdk.storage.Persister;
-import com.mesosphere.sdk.testutils.SchedulerConfigTestUtils;
+import com.mesosphere.sdk.testutils.OfferRequirementTestUtils;
 import com.mesosphere.sdk.testutils.TestConstants;
-import com.mesosphere.sdk.testutils.TestPodFactory;
-import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.Arrays;
@@ -22,32 +20,30 @@ import java.util.stream.Collectors;
  */
 public class DefaultStepFactoryTest {
 
-    private static final SchedulerConfig SCHEDULER_CONFIG = SchedulerConfigTestUtils.getTestSchedulerConfig();
+    private static final SchedulerFlags flags = OfferRequirementTestUtils.getTestSchedulerFlags();
 
     private StepFactory stepFactory;
     private ConfigStore<ServiceSpec> configStore;
     private StateStore stateStore;
 
-    @Test
+    @Test(expected = Step.InvalidStepException.class)
     public void testGetStepFailsOnMultipleResourceSetReferences() throws Exception {
 
         PodInstance podInstance = getPodInstanceWithSameResourceSets();
         List<String> tasksToLaunch = podInstance.getPod().getTasks().stream()
                 .map(taskSpec -> taskSpec.getName())
                 .collect(Collectors.toList());
-        Step step = stepFactory.getStep(podInstance, tasksToLaunch);
-        Assert.assertEquals(Status.ERROR, step.getStatus());
+        stepFactory.getStep(podInstance, tasksToLaunch);
     }
 
-    @Test
+    @Test(expected = Step.InvalidStepException.class)
     public void testGetStepFailsOnDuplicateDNSNames() throws Exception {
 
         PodInstance podInstance = getPodInstanceWithSameDnsPrefixes();
         List<String> tasksToLaunch = podInstance.getPod().getTasks().stream()
                 .map(taskSpec -> taskSpec.getName())
                 .collect(Collectors.toList());
-        Step step = stepFactory.getStep(podInstance, tasksToLaunch);
-        Assert.assertEquals(Status.ERROR, step.getStatus());
+        stepFactory.getStep(podInstance, tasksToLaunch);
     }
 
     private PodInstance getPodInstanceWithSameResourceSets() throws Exception {
@@ -55,7 +51,7 @@ public class DefaultStepFactoryTest {
                 TestPodFactory.getTaskSpec(TestConstants.TASK_NAME + 0, TestConstants.RESOURCE_SET_ID);
         TaskSpec taskSpec1 =
                 TestPodFactory.getTaskSpec(TestConstants.TASK_NAME + 1, TestConstants.RESOURCE_SET_ID);
-        PodSpec podSpec = DefaultPodSpec.newBuilder(SCHEDULER_CONFIG.getExecutorURI())
+        PodSpec podSpec = DefaultPodSpec.newBuilder(flags.getExecutorURI())
                 .type(TestConstants.POD_TYPE)
                 .count(1)
                 .tasks(Arrays.asList(taskSpec0, taskSpec1))
@@ -89,7 +85,7 @@ public class DefaultStepFactoryTest {
         TaskSpec taskSpec1 =
                 TestPodFactory.getTaskSpec(
                         TestConstants.TASK_NAME + 1, TestConstants.RESOURCE_SET_ID + 1, TestConstants.TASK_DNS_PREFIX);
-        PodSpec podSpec = DefaultPodSpec.newBuilder(SCHEDULER_CONFIG.getExecutorURI())
+        PodSpec podSpec = DefaultPodSpec.newBuilder(flags.getExecutorURI())
                 .type(TestConstants.POD_TYPE)
                 .count(1)
                 .tasks(Arrays.asList(taskSpec0, taskSpec1))

@@ -1,10 +1,7 @@
 ---
-layout: layout.pug
-navigationTitle: 
-excerpt:
-title: API Reference
-menuWeight: 70
-
+post_title: API Reference
+menu_order: 70
+enterprise: 'no'
 ---
 
 The DC/OS Elastic Service implements a REST API that may be accessed from outside the cluster. The <dcos_url> parameter referenced below indicates the base URL of the DC/OS cluster on which the Elastic Service is deployed.
@@ -59,7 +56,7 @@ A list of available node ids can be retrieved by sending a GET request to `/v1/p
 
 CLI Example
 ```
-$ dcos beta-elastic pod list
+$ dcos elastic pod list
 ```
 
 HTTP Example
@@ -77,7 +74,7 @@ $ curl  -H "Authorization:token=$auth_token" <dcos_url>/service/elastic/v1/pod/<
 
 CLI Example
 ```
-$ dcos beta-elastic pod info journalnode-0
+$ dcos elastic pod info journalnode-0
 ```
 
 HTTP Example
@@ -92,7 +89,7 @@ The replace endpoint can be used to replace a node with an instance running on a
 
 CLI Example
 ```
-$ dcos beta-elastic pod replace <node-id>
+$ dcos elastic pod replace <node-id>
 ```
 
 HTTP Example
@@ -108,7 +105,7 @@ The restart endpoint can be used to restart a node in place on the same agent no
 
 CLI Example
 ```
-$ dcos beta-elastic pod restart <node-id>
+$ dcos elastic pod restart <node-id>
 ```
 
 HTTP Example
@@ -117,20 +114,6 @@ $ curl -X POST -H "Authorization:token=$auth_token" <dcos_url>/service/elastic/v
 ```
 
 If the operation succeeds a `200 OK` is returned.
-
-## Pause a Node
-
-The pause endpoint can be used to relaunch a node in an idle command state for debugging purposes.
-
-CLI example
-```
-dcos beta-elastic debug pod pause <node-id>
-```
-
-HTTP Example
-```bash
-$ curl -X POST -H "Authorization:token=$auth_token" <dcos_url>/service/elastic/v1/pod/<node-id>/pause
-```
 
 # Configuration API
 
@@ -142,7 +125,7 @@ You can view the current target configuration by sending a GET request to `/v1/c
 
 CLI Example
 ```
-$ dcos beta-elastic config target
+$ dcos elastic config target
 ```
 
 HTTP Example
@@ -156,7 +139,7 @@ You can list all configuration IDs by sending a GET request to `/v1/configuratio
 
 CLI Example
 ```
-$ dcos beta-elastic config list
+$ dcos elastic config list
 ```
 
 HTTP Example
@@ -170,7 +153,7 @@ You can view a specific configuration by sending a GET request to `/v1/configura
 
 CLI Example
 ```
-$ dcos beta-elastic config show 9a8d4308-ab9d-4121-b460-696ec3368ad6
+$ dcos elastic config show 9a8d4308-ab9d-4121-b460-696ec3368ad6
 ```
 
 HTTP Example

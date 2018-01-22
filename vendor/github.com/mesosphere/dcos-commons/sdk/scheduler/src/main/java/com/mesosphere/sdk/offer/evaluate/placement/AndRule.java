@@ -1,18 +1,17 @@
 package com.mesosphere.sdk.offer.evaluate.placement;
 
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.mesosphere.sdk.offer.evaluate.EvaluationOutcome;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
+
 import com.mesosphere.sdk.specification.PodInstance;
 import org.apache.commons.lang3.builder.EqualsBuilder;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.apache.mesos.Protos.Offer;
 import org.apache.mesos.Protos.TaskInfo;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Collection;
-import java.util.stream.Collectors;
+import com.mesosphere.sdk.offer.evaluate.EvaluationOutcome;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 
 /**
  * Wrapper for one or more another rules which returns the AND/intersection of those rules.
@@ -35,7 +34,6 @@ public class AndRule implements PlacementRule {
         if (rules.isEmpty()) {
             return EvaluationOutcome.fail(this, "No rules to AND together is treated as 'always fail'").build();
         }
-
         int passingCount = 0;
         Collection<EvaluationOutcome> children = new ArrayList<>();
         for (PlacementRule rule : rules) {
@@ -46,26 +44,14 @@ public class AndRule implements PlacementRule {
             children.add(child);
         }
 
+
         if (passingCount == rules.size()) {
-            return EvaluationOutcome.pass(
-                    this,
-                    "%d of %d rules are passing:", passingCount, rules.size())
+            return EvaluationOutcome.pass(this, "%d of %d rules are passing:", passingCount, rules.size())
                     .addAllChildren(children)
                     .build();
         } else {
-            return EvaluationOutcome.fail(
-                    this,
-                    "%d of %d rules are passing:", passingCount, rules.size())
-                    .addAllChildren(children)
-                    .build();
+            return EvaluationOutcome.fail(this, "%d of %d rules are passing:", passingCount, rules.size()).build();
         }
-    }
-
-    @Override
-    public Collection<PlacementField> getPlacementFields() {
-        return rules.stream()
-                .flatMap(rule -> rule.getPlacementFields().stream())
-                .collect(Collectors.toList());
     }
 
     @JsonProperty("rules")

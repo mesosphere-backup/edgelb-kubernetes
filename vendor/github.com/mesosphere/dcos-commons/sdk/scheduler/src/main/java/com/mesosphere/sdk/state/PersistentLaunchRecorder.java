@@ -1,6 +1,7 @@
 package com.mesosphere.sdk.state;
 
 import com.google.common.annotations.VisibleForTesting;
+import com.google.protobuf.TextFormat;
 import com.mesosphere.sdk.offer.*;
 import com.mesosphere.sdk.offer.taskdata.TaskLabelReader;
 import com.mesosphere.sdk.scheduler.plan.DefaultPodInstance;
@@ -53,16 +54,17 @@ public class PersistentLaunchRecorder implements OperationRecorder {
             taskStatus = Optional.of(taskStatusBuilder.build());
         }
 
-        logger.info("Persisting launch operation{} for {}",
+        logger.info("Persisting launch operation{} for {}: {}",
                 taskStatusDescription,
-                taskInfo.getName());
+                taskInfo.getName(),
+                TextFormat.shortDebugString(taskInfo));
 
         if (podInstance.isPresent()) {
             updateTaskResourcesWithinResourceSet(podInstance.get(), taskInfo);
         }
         stateStore.storeTasks(Collections.singletonList(taskInfo));
         if (taskStatus.isPresent()) {
-            stateStore.storeStatus(taskInfo.getName(), taskStatus.get());
+            stateStore.storeStatus(taskStatus.get());
         }
     }
 

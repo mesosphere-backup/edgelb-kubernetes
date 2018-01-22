@@ -143,11 +143,6 @@ public interface ParentElement<C extends Element> extends Element, Interruptible
             result = Status.IN_PROGRESS;
             LOGGER.debug("({} status={}) At least one element has status '{}' and one has status '{}'",
                     getName(), result, Status.COMPLETE, Status.STARTING);
-        } else if (anyHaveStatus(Status.COMPLETE, children) &&
-                anyHaveStatus(Status.STARTED, candidateChildren)) {
-            result = Status.IN_PROGRESS;
-            LOGGER.debug("({} status={}) At least one element has status '{}' and one has status '{}'",
-                    getName(), result, Status.COMPLETE, Status.STARTING);
         } else if (!candidateChildren.isEmpty() && anyHaveStatus(Status.PENDING, candidateChildren)) {
             result = Status.PENDING;
             LOGGER.debug("({} status={}) At least one element has status: {}",
@@ -160,10 +155,6 @@ public interface ParentElement<C extends Element> extends Element, Interruptible
             result = Status.STARTING;
             LOGGER.debug("({} status={}) At least one element has status '{}'",
                     getName(), result, Status.STARTING);
-        } else if (anyHaveStatus(Status.STARTED, candidateChildren)) {
-            result = Status.STARTED;
-            LOGGER.debug("({} status={}) At least one element has status '{}'",
-                    getName(), result, Status.STARTED);
         } else {
             result = Status.ERROR;
             LOGGER.warn("({} status={}) Unexpected state. children: {}",

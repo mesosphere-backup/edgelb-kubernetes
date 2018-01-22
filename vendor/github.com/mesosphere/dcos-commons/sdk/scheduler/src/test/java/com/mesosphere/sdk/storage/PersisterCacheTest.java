@@ -5,8 +5,6 @@ import org.junit.Test;
 import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.MockitoAnnotations;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 
 import com.mesosphere.sdk.storage.StorageError.Reason;
 
@@ -21,8 +19,6 @@ import static org.mockito.Mockito.when;
  * Tests for {@link PersisterCache}
  */
 public class PersisterCacheTest {
-
-    private static final Logger logger = LoggerFactory.getLogger(PersisterCacheTest.class);
 
     private static final String KEY = "key";
     private static final byte[] VAL = "someval".getBytes(StandardCharsets.UTF_8);
@@ -116,7 +112,7 @@ public class PersisterCacheTest {
         assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(persister));
         assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(cache));
 
-        cache.recursiveDelete(KEY);
+        cache.deleteAll(KEY);
         try {
             cache.get(KEY);
             fail("Expected exception");
@@ -126,7 +122,7 @@ public class PersisterCacheTest {
         assertEquals(KEY2_SET, PersisterUtils.getAllKeys(persister));
         assertEquals(KEY2_SET, PersisterUtils.getAllKeys(cache));
 
-        cache.recursiveDelete(KEY2);
+        cache.deleteAll(KEY2);
         try {
             cache.get(KEY2);
             fail("Expected exception");
@@ -138,7 +134,7 @@ public class PersisterCacheTest {
     }
 
     @Test
-    public void testSetManyGetDeleteMany() throws PersisterException {
+    public void testSetManyGetDelete() throws PersisterException {
         Map<String, byte[]> map = new HashMap<>();
         map.put(KEY, VAL);
         cache.setMany(map);
@@ -156,7 +152,8 @@ public class PersisterCacheTest {
         assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(persister));
         assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(cache));
 
-        cache.recursiveDeleteMany(Arrays.asList(KEY, KEY2));
+        cache.deleteAll(KEY);
+        cache.deleteAll(KEY2);
 
         assertTrue(PersisterUtils.getAllKeys(persister).isEmpty());
         assertTrue(PersisterUtils.getAllKeys(cache).isEmpty());
@@ -234,15 +231,15 @@ public class PersisterCacheTest {
     public void testDeleteFailsCacheUnchanged() throws PersisterException {
         when(mockPersister.getChildren(Mockito.anyString())).thenReturn(Collections.emptyList());
         doThrow(new PersisterException(Reason.STORAGE_ERROR, "hi"))
-                .when(mockPersister).recursiveDelete(KEY2);
+                .when(mockPersister).deleteAll(KEY2);
         cache = new PersisterCache(mockPersister);
         cache.set(KEY, VAL);
         cache.set(KEY2, VAL2);
         assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(cache));
 
-        cache.recursiveDelete(KEY);
+        cache.deleteAll(KEY);
         try {
-            cache.recursiveDelete(KEY2);
+            cache.deleteAll(KEY2);
             fail("Expected exception");
         } catch (PersisterException e) {
             // expected
@@ -265,13 +262,13 @@ public class PersisterCacheTest {
         cache.set(KEY2, VAL2);
         assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(cache));
 
-        cache.recursiveDelete(KEY);
-        cache.recursiveDelete(KEY2);
+        cache.deleteAll(KEY);
+        cache.deleteAll(KEY2);
         assertTrue(PersisterUtils.getAllKeys(cache).isEmpty());
 
         // mockPersister doesn't throw despite missing keys. cache then logs error but doesn't throw (noop):
-        cache.recursiveDelete(KEY);
-        cache.recursiveDelete(KEY2);
+        cache.deleteAll(KEY);
+        cache.deleteAll(KEY2);
     }
 
     @Test
@@ -290,7 +287,7 @@ public class PersisterCacheTest {
                             assertArrayEquals(VAL2, cache.get(key));
                             cache.setMany(Collections.singletonMap(key, VAL));
                             assertArrayEquals(VAL, cache.get(key));
-                            cache.recursiveDelete(key);
+                            cache.deleteAll(key);
                             try {
                                 cache.get(key);
                                 fail("Expected exception");
@@ -317,7 +314,6 @@ public class PersisterCacheTest {
                 @Override
                 public void uncaughtException(Thread t, Throwable e) {
                     synchronized (lock) {
-                        logger.error(t.getName(), e);
                         errors.add(e);
                     }
                 }

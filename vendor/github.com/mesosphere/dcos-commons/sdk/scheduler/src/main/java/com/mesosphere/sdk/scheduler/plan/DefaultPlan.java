@@ -1,12 +1,10 @@
 package com.mesosphere.sdk.scheduler.plan;
 
 import org.apache.commons.lang3.builder.EqualsBuilder;
-
-import com.google.common.base.Joiner;
+import org.apache.commons.lang3.builder.ReflectionToStringBuilder;
 import com.mesosphere.sdk.scheduler.plan.strategy.SerialStrategy;
 import com.mesosphere.sdk.scheduler.plan.strategy.Strategy;
 
-import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -71,23 +69,7 @@ public class DefaultPlan implements Plan {
 
     @Override
     public String toString() {
-        // Provide a nicely formatted tree -- mainly for developer use in e.g. unit tests
-        List<String> rows = new ArrayList<>();
-        rows.add(String.format("Plan: %s (%s)", getName(), getStatus()));
-        for (Phase phase : getChildren()) {
-            rows.add(String.format("  Phase: %s (%s)", phase.getName(), phase.getStatus()));
-            for (Step step : phase.getChildren()) {
-                rows.add(String.format("    Step: %s (%s)", step.getName(), step.getStatus()));
-            }
-        }
-        List<String> errors = getErrors();
-        if (!errors.isEmpty()) {
-            rows.add("Errors:");
-            for (String error : errors) {
-                rows.add(String.format("  %s", error));
-            }
-        }
-        return Joiner.on('\n').join(rows);
+        return ReflectionToStringBuilder.toString(this);
     }
 
     @Override

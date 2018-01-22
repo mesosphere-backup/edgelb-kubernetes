@@ -2,15 +2,16 @@ package com.mesosphere.sdk.state;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.protobuf.TextFormat;
+import com.mesosphere.sdk.config.ConfigurationUpdater;
 import com.mesosphere.sdk.offer.TaskException;
 import com.mesosphere.sdk.offer.TaskUtils;
-import com.mesosphere.sdk.scheduler.recovery.FailureUtils;
-import com.mesosphere.sdk.specification.GoalState;
 import com.mesosphere.sdk.specification.PodInstance;
 import com.mesosphere.sdk.specification.ServiceSpec;
 import com.mesosphere.sdk.specification.TaskSpec;
 import com.mesosphere.sdk.storage.StorageError.Reason;
 import org.apache.mesos.Protos;
+import org.apache.mesos.Protos.TaskInfo;
+import org.apache.mesos.Protos.TaskStatus;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -25,10 +26,10 @@ import java.util.stream.Collectors;
 public class StateStoreUtils {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(StateStoreUtils.class);
+    private static final String SUPPRESSED_PROPERTY_KEY = "suppressed";
     private static final String UNINSTALLING_PROPERTY_KEY = "uninstalling";
     private static final String LAST_COMPLETED_UPDATE_TYPE_KEY = "last-completed-update-type";
     private static final String PROPERTY_TASK_INFO_SUFFIX = ":task-status";
-    private static final byte[] DEPLOYMENT_TYPE = "DEPLOY".getBytes(StandardCharsets.UTF_8);
 
     private StateStoreUtils() {
         // do not instantiate
@@ -46,12 +47,12 @@ public class StateStoreUtils {
     }
 
     /**
-     * Fetches and returns all {@link Protos.TaskInfo}s for tasks needing recovery and in the list of
+     * Fetches and returns all {@link TaskInfo}s for tasks needing recovery and in the list of
      * launchable Tasks.
      *
      * @return Terminated TaskInfos
      */
-    public static Collection<Protos.TaskInfo> fetchTasksNeedingRecovery(
+    public static Collection<TaskInfo> fetchTasksNeedingRecovery(
             StateStore stateStore,
             ConfigStore<ServiceSpec> configStore,
             Set<String> launchableTaskNames) throws TaskException {
@@ -62,50 +63,40 @@ public class StateStoreUtils {
     }
 
     /**
-     * Fetches and returns all {@link Protos.TaskInfo}s for tasks needing recovery.
+     * Fetches and returns all {@link TaskInfo}s for tasks needing recovery.
      *
      * @return Terminated TaskInfos
      */
-    public static Collection<Protos.TaskInfo> fetchTasksNeedingRecovery(
+    public static Collection<TaskInfo> fetchTasksNeedingRecovery(
             StateStore stateStore,
             ConfigStore<ServiceSpec> configStore) throws TaskException {
 
-        Collection<Protos.TaskInfo> allInfos = stateStore.fetchTasks();
-        Collection<Protos.TaskStatus> allStatuses = stateStore.fetchStatuses();
+        Collection<TaskInfo> allInfos = stateStore.fetchTasks();
+        Collection<TaskStatus> allStatuses = stateStore.fetchStatuses();
 
-        Map<Protos.TaskID, Protos.TaskStatus> statusMap = new HashMap<>();
-        for (Protos.TaskStatus status : allStatuses) {
+        Map<Protos.TaskID, TaskStatus> statusMap = new HashMap<>();
+        for (TaskStatus status : allStatuses) {
             statusMap.put(status.getTaskId(), status);
         }
 
-        List<Protos.TaskInfo> results = new ArrayList<>();
-        for (Protos.TaskInfo info : allInfos) {
-            Protos.TaskStatus status = statusMap.get(info.getTaskId());
+        List<TaskInfo> results = new ArrayList<>();
+        for (TaskInfo info : allInfos) {
+            TaskStatus status = statusMap.get(info.getTaskId());
             if (status == null) {
                 continue;
             }
 
-            Optional<TaskSpec> taskSpec = TaskUtils.getTaskSpec(configStore, info);
+            Optional<TaskSpec> taskSpec = TaskUtils.getTaskSpec(
+                    TaskUtils.getPodInstance(configStore, info),
+                    info.getName());
+
             if (!taskSpec.isPresent()) {
                 throw new TaskException("Failed to determine TaskSpec from TaskInfo: " + info);
             }
 
-            boolean markedFailed = FailureUtils.isPermanentlyFailed(info);
-            boolean isPermanentlyFailed = markedFailed && taskSpec.get().getGoal() == GoalState.RUNNING;
-
-            if (TaskUtils.needsRecovery(taskSpec.get(), status) || isPermanentlyFailed) {
-
-                LOGGER.info(
-                        "Task: '{}' needs recovery " +
-                                "with status: {}, " +
-                                "marked failed: {}, " +
-                                "goal state: {}, " +
-                                "permanently failed: {}.",
-                        taskSpec.get().getName(),
-                        TextFormat.shortDebugString(status),
-                        markedFailed,
-                        taskSpec.get().getGoal().name(),
-                        isPermanentlyFailed);
+            if (TaskUtils.needsRecovery(taskSpec.get(), status)) {
+                LOGGER.info("Task: '{}' needs recovery with status: {}.",
+                        taskSpec.get().getName(), TextFormat.shortDebugString(status));
                 results.add(info);
             }
         }
@@ -113,12 +104,12 @@ public class StateStoreUtils {
     }
 
     /**
-     * Returns all {@link Protos.TaskInfo}s associated with the provided {@link PodInstance}, or an empty list if none
-     * were found.
+     * Returns all {@link TaskInfo}s associated with the provided {@link PodInstance}, or an empty list if none were
+     * found.
      *
      * @throws StateStoreException in the event of an IO error other than missing tasks
      */
-    public static Collection<Protos.TaskInfo> fetchPodTasks(StateStore stateStore, PodInstance podInstance)
+    public static Collection<TaskInfo> fetchPodTasks(StateStore stateStore, PodInstance podInstance)
             throws StateStoreException {
         Collection<String> taskInfoNames = podInstance.getPod().getTasks().stream()
                 .map(taskSpec -> TaskSpec.getInstanceName(podInstance, taskSpec))
@@ -135,10 +126,11 @@ public class StateStoreUtils {
      * Verifies that the supplied TaskStatus corresponds to a single TaskInfo in the provided StateStore and returns the
      * TaskInfo.
      *
-     * @return The singular {@link Protos.TaskInfo} if it is present
-     * @throws StateStoreException if zero or multiple corresponding {@link Protos.TaskInfo}s are found
+     * @return The singular TaskInfo if it is present
+     * @throws StateStoreException if no corresponding TaskInfo is found.
+     * @throws StateStoreException if multiple corresponding TaskInfo's are found.
      */
-    public static String getTaskName(StateStore stateStore, Protos.TaskStatus taskStatus)
+    public static TaskInfo getTaskInfo(StateStore stateStore, TaskStatus taskStatus)
             throws StateStoreException {
         Optional<Protos.TaskInfo> taskInfoOptional = Optional.empty();
 
@@ -160,58 +152,21 @@ public class StateStoreUtils {
                     "Failed to find a task with TaskID: %s", taskStatus));
         }
 
-        return taskInfoOptional.get().getName();
+        return taskInfoOptional.get();
     }
 
     /**
-     * TaskInfo and TaskStatus objects referring to the same Task name are not written atomically.
-     * It is therefore possible for the states across these elements to become out of sync.  While the scheduler process
-     * is up they remain in sync.  This method produces an initial synchronized state.
-     *
-     * For example:
-     * <ol>
-     * <li>TaskInfo(name=foo, id=1) is written</li>
-     * <li>TaskStatus(name=foo, id=1, status=RUNNING) is written</li>
-     * <li>Task foo is reconfigured/relaunched</li>
-     * <li>TaskInfo(name=foo, id=2) is written</li>
-     * <li>Scheduler is restarted before new TaskStatus is written</li>
-     * <li>Scheduler comes back and sees TaskInfo(name=foo, id=2) and TaskStatus(name=foo, id=1, status=RUNNING)</li>
-     * </ol>
+     * Returns the current value of the 'suppressed' property in the provided {@link StateStore}.
      */
-    static void repairTaskIDs(StateStore stateStore) {
-        Map<String, Protos.TaskStatus> repairedStatuses = new HashMap<>();
-        List<Protos.TaskInfo> repairedTasks = new ArrayList<>();
+    public static boolean isSuppressed(StateStore stateStore) throws StateStoreException {
+        return fetchBooleanProperty(stateStore, SUPPRESSED_PROPERTY_KEY);
+    }
 
-        for (Protos.TaskInfo task : stateStore.fetchTasks()) {
-            Optional<Protos.TaskStatus> statusOptional = stateStore.fetchStatus(task.getName());
-
-            if (statusOptional.isPresent()) {
-                Protos.TaskStatus status = statusOptional.get();
-                if (!status.getTaskId().equals(task.getTaskId())) {
-                    LOGGER.warn(
-                            "Found StateStore status inconsistency for task {}: task.taskId={}, taskStatus.taskId={}",
-                            task.getName(), task.getTaskId(), status.getTaskId());
-                    repairedTasks.add(task.toBuilder().setTaskId(status.getTaskId()).build());
-                    repairedStatuses.put(
-                            task.getName(), status.toBuilder().setState(Protos.TaskState.TASK_FAILED).build());
-                }
-            } else {
-                LOGGER.warn(
-                        "Found StateStore status inconsistency for task {}: task.taskId={}, no status",
-                        task.getName(), task.getTaskId());
-                Protos.TaskStatus status = Protos.TaskStatus.newBuilder()
-                        .setTaskId(task.getTaskId())
-                        .setState(Protos.TaskState.TASK_FAILED)
-                        .setMessage("Assuming failure for inconsistent TaskIDs")
-                        .build();
-                repairedStatuses.put(task.getName(), status);
-            }
-        }
-
-        stateStore.storeTasks(repairedTasks);
-        repairedStatuses.entrySet().stream()
-                .filter(statusEntry -> !statusEntry.getValue().getTaskId().getValue().equals(""))
-                .forEach(statusEntry -> stateStore.storeStatus(statusEntry.getKey(), statusEntry.getValue()));
+    /**
+     * Sets a 'suppressed' property in the provided {@link StateStore} to the provided value.
+     */
+    public static void setSuppressed(StateStore stateStore, boolean isSuppressed) {
+        setBooleanProperty(stateStore, SUPPRESSED_PROPERTY_KEY, isSuppressed);
     }
 
     /**
@@ -250,7 +205,7 @@ public class StateStoreUtils {
     /**
      * Stores a TaskStatus as a Property in the provided state store.
      */
-    public static void storeTaskStatusAsProperty(StateStore stateStore, String taskName, Protos.TaskStatus taskStatus)
+    public static void storeTaskStatusAsProperty(StateStore stateStore, String taskName, TaskStatus taskStatus)
             throws StateStoreException {
         stateStore.storeProperty(taskName + PROPERTY_TASK_INFO_SUFFIX, taskStatus.toByteArray());
     }
@@ -259,9 +214,9 @@ public class StateStoreUtils {
      * Returns an Optional<TaskStatus> from the properties in the provided state store for the specified
      * task name.
      */
-    public static Optional<Protos.TaskStatus> getTaskStatusFromProperty(StateStore stateStore, String taskName) {
+    public static Optional<TaskStatus> getTaskStatusFromProperty(StateStore stateStore, String taskName) {
         try {
-            return Optional.of(Protos.TaskStatus.parseFrom(
+            return Optional.of(TaskStatus.parseFrom(
                     stateStore.fetchProperty(taskName + PROPERTY_TASK_INFO_SUFFIX)));
         } catch (Exception e) {
             // Broadly catch exceptions to handle:
@@ -273,17 +228,28 @@ public class StateStoreUtils {
     }
 
     /**
-     * Sets whether the service has previously completed deployment.
+     * Sets the last completed update type.
      */
-    public static void setDeploymentWasCompleted(StateStore stateStore) {
-        stateStore.storeProperty(LAST_COMPLETED_UPDATE_TYPE_KEY, DEPLOYMENT_TYPE);
+    public static void setLastCompletedUpdateType(
+            StateStore stateStore,
+            ConfigurationUpdater.UpdateResult.DeploymentType updateResultDeploymentType) {
+        stateStore.storeProperty(
+                LAST_COMPLETED_UPDATE_TYPE_KEY,
+                updateResultDeploymentType.name().getBytes(StandardCharsets.UTF_8));
     }
 
     /**
-     * Gets whether the service has previously completed deployment. If this is {@code true}, then any configuration
-     * changes should be treated as an update rather than a new deployment.
+     * Gets the last completed update type.
      */
-    public static boolean getDeploymentWasCompleted(StateStore stateStore) {
-        return Arrays.equals(fetchPropertyOrEmptyArray(stateStore, LAST_COMPLETED_UPDATE_TYPE_KEY), DEPLOYMENT_TYPE);
+    public static ConfigurationUpdater.UpdateResult.DeploymentType getLastCompletedUpdateType(StateStore stateStore) {
+        byte[] bytes = fetchPropertyOrEmptyArray(
+                stateStore,
+                LAST_COMPLETED_UPDATE_TYPE_KEY);
+        if (bytes.length == 0) {
+            return ConfigurationUpdater.UpdateResult.DeploymentType.NONE;
+        } else {
+            String value = new String(bytes, StandardCharsets.UTF_8);
+            return ConfigurationUpdater.UpdateResult.DeploymentType.valueOf(value);
+        }
     }
 }

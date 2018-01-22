@@ -81,8 +81,7 @@ public class MesosResourcePool {
     }
 
     public Map<String, Value> getUnreservedMergedPool() {
-        Map<String, Value> pool = reservableMergedPoolByRole.get(Constants.ANY_ROLE);
-        return pool == null ? Collections.emptyMap() : pool;
+        return reservableMergedPoolByRole.get(Constants.ANY_ROLE);
     }
 
     /**
@@ -168,8 +167,7 @@ public class MesosResourcePool {
     public Optional<MesosResource> consumeReservableMerged(String name, Value desiredValue, String preReservedRole) {
         Map<String, Value> pool = reservableMergedPoolByRole.get(preReservedRole);
         if (pool == null) {
-            logger.info("No unreserved resources available for role '{}'. Reservable roles are: {}",
-                    preReservedRole, reservableMergedPoolByRole.keySet());
+            logger.info("No unreserved resources available in role: {}", preReservedRole);
             return Optional.empty();
         }
 
@@ -191,11 +189,10 @@ public class MesosResourcePool {
             return Optional.of(new MesosResource(builder.build()));
         } else {
             if (availableValue == null) {
-                logger.info("Offer lacks any unreserved {} resources for role {}", name, preReservedRole);
+                logger.info("Offer lacks any unreserved resources named {}", name);
             } else {
-                logger.info("Offered quantity of {} for role {} is insufficient: desired {}, offered {}",
+                logger.info("Offered quantity of {} is insufficient: desired {}, offered {}",
                         name,
-                        preReservedRole,
                         TextFormat.shortDebugString(desiredValue),
                         TextFormat.shortDebugString(availableValue));
             }
@@ -237,7 +234,6 @@ public class MesosResourcePool {
         reservableMergedPoolByRole.put(previousRole, pool);
     }
 
-    @SuppressWarnings("deprecation")
     private void freeAtomicResource(MesosResource mesosResource) {
         Resource.Builder resBuilder = Resource.newBuilder(mesosResource.getResource());
         resBuilder.clearReservation();

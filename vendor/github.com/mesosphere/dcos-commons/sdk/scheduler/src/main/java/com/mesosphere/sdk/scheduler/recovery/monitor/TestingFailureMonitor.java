@@ -2,7 +2,7 @@ package com.mesosphere.sdk.scheduler.recovery.monitor;
 
 import org.apache.mesos.Protos.TaskInfo;
 
-import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -15,11 +15,17 @@ public class TestingFailureMonitor implements FailureMonitor {
     private List<TaskInfo> failedList;
 
     public TestingFailureMonitor(TaskInfo... failed) {
-        this.failedList = Arrays.asList(failed);
+        failedList = new ArrayList<>();
+        for (TaskInfo info : failed) {
+            failedList.add(info);
+        }
     }
 
     public void setFailedList(TaskInfo... failed) {
-        this.failedList = Arrays.asList(failed);
+        failedList = new ArrayList<>();
+        for (TaskInfo info : failed) {
+            failedList.add(info);
+        }
     }
 
     @Override

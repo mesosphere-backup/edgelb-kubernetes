@@ -7,7 +7,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * Defines a Service's configuration.
+ * Defines a {@link Service}.
  */
 public interface ServiceSpec extends Configuration {
     @JsonProperty("name")

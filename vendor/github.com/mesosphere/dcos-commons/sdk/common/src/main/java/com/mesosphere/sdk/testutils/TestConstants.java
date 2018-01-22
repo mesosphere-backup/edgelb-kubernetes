@@ -42,7 +42,6 @@ public class TestConstants {
     public static final String HAS_DYNAMIC_PORT_ASSIGNMENT_LABEL = "has-dynamic-port-assignment";
     public static final String HAS_VIP_LABEL = "hasvip";
     public static final String MOUNT_SOURCE_ROOT = "/mnt/source";
-    public static final String IP_ADDRESS = "localhost";
 
     // CNI port mapping constants
     public static final int HOST_PORT = 4040;
@@ -89,19 +88,4 @@ public class TestConstants {
                     .setTaskId(TASK_ID)
                     .setState(Protos.TaskState.TASK_RUNNING)
                     .build();
-
-    public static final String ZONE = "zone";
-    public static final String LOCAL_REGION = "local";
-    public static final String REMOTE_REGION = "remote";
-
-    public static final Protos.DomainInfo LOCAL_DOMAIN_INFO = getDomainInfo(LOCAL_REGION);
-    public static final Protos.DomainInfo REMOTE_DOMAIN_INFO = getDomainInfo(REMOTE_REGION);
-
-    private static final Protos.DomainInfo getDomainInfo(String region) {
-        return Protos.DomainInfo.newBuilder()
-                .setFaultDomain(Protos.DomainInfo.FaultDomain.newBuilder()
-                        .setZone(Protos.DomainInfo.FaultDomain.ZoneInfo.newBuilder().setName(TestConstants.ZONE))
-                        .setRegion(Protos.DomainInfo.FaultDomain.RegionInfo.newBuilder().setName(region)))
-                .build();
-    }
 }

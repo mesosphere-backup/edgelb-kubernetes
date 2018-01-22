@@ -53,13 +53,17 @@ cp -R tools $PROJECT_PATH/$PROJECT_NAME/tools
 cp -R testing $PROJECT_PATH/$PROJECT_NAME/testing
 cp ./.gitignore $PROJECT_PATH/$PROJECT_NAME
 rm -rf $PROJECT_PATH/$PROJECT_NAME/build
-rm -rf $PROJECT_PATH/$PROJECT_NAME/cli/dcos-*/*template*
-rm -rf $PROJECT_PATH/$PROJECT_NAME/cli/dcos-*/.*template*
+rm -rf $PROJECT_PATH/$PROJECT_NAME/cli/dcos-*/*.whl
+rm -rf $PROJECT_PATH/$PROJECT_NAME/cli/dcos-*/dcos-*
+rm -rf $PROJECT_PATH/$PROJECT_NAME/cli/python/{build,dist}
 rm -rf $PROJECT_PATH/$PROJECT_NAME/build.sh
 
 cat > $PROJECT_PATH/$PROJECT_NAME/build.sh <<'EOF'
 #!/bin/bash
 set -e
+
+# capture anonymous metrics for reporting
+curl https://mesosphere.com/wp-content/themes/mesosphere/library/images/assets/sdk/build-sh-start.png >/dev/null 2>&1
 
 FRAMEWORK_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 BUILD_DIR=$FRAMEWORK_DIR/build/distributions
@@ -70,6 +74,9 @@ export TOOLS_DIR=${FRAMEWORK_DIR}/tools
 export CLI_DIR=${FRAMEWORK_DIR}/cli
 export ORG_PATH=github.com/$REPO_NAME
 ${FRAMEWORK_DIR}/tools/build_framework.sh $PUBLISH_STEP $REPO_NAME $FRAMEWORK_DIR $BUILD_DIR/$REPO_NAME-scheduler.zip
+
+# capture anonymous metrics for reporting
+curl https://mesosphere.com/wp-content/themes/mesosphere/library/images/assets/sdk/build-sh-finish.png >/dev/null 2>&1
 EOF
 chmod +x $PROJECT_PATH/$PROJECT_NAME/build.sh
 
@@ -117,6 +124,8 @@ find $PROJECT_PATH/$PROJECT_NAME -type f -name *.bak -exec rm -f {} \;
 sed -i.bak "s/compile project(\":scheduler\")/compile \"mesosphere:scheduler:$VERSION\"/g" $PROJECT_PATH/$PROJECT_NAME/build.gradle
 sed -i.bak "s/compile project(\":executor\")/compile \"mesosphere:executor:$VERSION\"/g" $PROJECT_PATH/$PROJECT_NAME/build.gradle
 sed -i.bak "s/testCompile project(\":testing\")/testCompile \"mesosphere:testing:$VERSION\"/g" $PROJECT_PATH/$PROJECT_NAME/build.gradle
+sed -i.bak '/distZip.dependsOn ":executor:distZip"/d' $PROJECT_PATH/$PROJECT_NAME/build.gradle
+sed -i.bak '/distZip.finalizedBy copyExecutor/d' $PROJECT_PATH/$PROJECT_NAME/build.gradle
 rm -f $PROJECT_PATH/$PROJECT_NAME/build.gradle.bak
 
 GRADLEW=$(pwd)/gradlew

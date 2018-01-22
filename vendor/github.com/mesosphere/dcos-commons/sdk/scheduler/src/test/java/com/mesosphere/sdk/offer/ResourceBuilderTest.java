@@ -19,7 +19,6 @@ import java.util.UUID;
 /**
  * Test construction of Resource protobufs.
  */
-@SuppressWarnings("deprecation")
 public class ResourceBuilderTest extends DefaultCapabilitiesTestSuite {
     /*
         name: "cpus"

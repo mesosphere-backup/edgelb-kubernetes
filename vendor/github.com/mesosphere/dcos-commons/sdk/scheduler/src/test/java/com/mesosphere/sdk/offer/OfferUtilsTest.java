@@ -15,8 +15,6 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.stream.Collectors;
 
-import static org.mockito.Matchers.any;
-import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.verify;
 
 public class OfferUtilsTest {
@@ -75,21 +73,21 @@ public class OfferUtilsTest {
     public void testDeclineOffers() {
         final List<Protos.Offer> offers = getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK);
         final List<Protos.OfferID> offerIds = offers.stream().map(Protos.Offer::getId).collect(Collectors.toList());
-        OfferUtils.declineLong(mockSchedulerDriver, offers);
-        verify(mockSchedulerDriver).declineOffer(eq(offerIds.get(0)), any());
-        verify(mockSchedulerDriver).declineOffer(eq(offerIds.get(1)), any());
+        OfferUtils.declineOffers(mockSchedulerDriver, offers);
+        verify(mockSchedulerDriver).declineOffer(offerIds.get(0));
+        verify(mockSchedulerDriver).declineOffer(offerIds.get(1));
     }
 
     private List<Protos.Offer> getOffers(double cpus, double mem, double disk) {
         final ArrayList<Protos.Offer> offers = new ArrayList<>();
         offers.addAll(OfferTestUtils.getOffers(
                 Arrays.asList(
-                        ResourceTestUtils.getUnreservedCpus(cpus),
+                        ResourceTestUtils.getUnreservedCpu(cpus),
                         ResourceTestUtils.getUnreservedMem(mem),
                         ResourceTestUtils.getUnreservedDisk(disk))));
         offers.add(Protos.Offer.newBuilder(OfferTestUtils.getOffers(
                 Arrays.asList(
-                        ResourceTestUtils.getUnreservedCpus(cpus),
+                        ResourceTestUtils.getUnreservedCpu(cpus),
                         ResourceTestUtils.getUnreservedMem(mem),
                         ResourceTestUtils.getUnreservedDisk(disk))).get(0))
                 .setId(Protos.OfferID.newBuilder().setValue("other-offer"))

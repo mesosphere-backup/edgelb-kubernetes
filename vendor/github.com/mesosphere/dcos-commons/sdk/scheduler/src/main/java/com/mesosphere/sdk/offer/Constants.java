@@ -2,8 +2,6 @@ package com.mesosphere.sdk.offer;
 
 import org.apache.mesos.Protos.DiscoveryInfo;
 
-import java.time.Duration;
-
 /**
  * This class encapsulates constants of relevance to SDK Scheduler internals.
  *
@@ -14,10 +12,8 @@ public class Constants {
 
     /** The name used for the deployment plan. */
     public static final String DEPLOY_PLAN_NAME = "deploy";
-    /** The name used in specifications for the update plan. Overrides the deploy plan when relevant. */
+    /** The name used for the update plan. */
     public static final String UPDATE_PLAN_NAME = "update";
-    /** The name used for the decommission plan. */
-    public static final String DECOMMISSION_PLAN_NAME = "decommission";
 
     /** The name used for reserved network port resources. */
     public static final String PORTS_RESOURCE_TYPE = "ports";
@@ -52,9 +48,9 @@ public class Constants {
      * This may be overridden by manually constructing the {@link com.mesosphere.sdk.specification.NamedVIPSpec} or
      * {@link com.mesosphere.sdk.specification.PortSpec}.
      *
-     * As of this writing, this setting is only used by {@link com.mesosphere.sdk.http.EndpointsResource} for
-     * determining what ports to advertise, where {@code EXTERNAL} means advertise and non-{@code EXTERNAL} means don't
-     * advertise. According to the networking team this isn't currently used by DC/OS itself (as of 1.10).
+     * As of this writing, this setting is only used by {@link com.mesosphere.sdk.api.EndpointsResource} for determining
+     * what ports to advertise, where {@code EXTERNAL} means advertise and non-{@code EXTERNAL} means don't advertise.
+     * According to the networking team this isn't currently used by DC/OS itself (as of 1.10).
      */
     public static final DiscoveryInfo.Visibility DISPLAYED_PORT_VISIBILITY = DiscoveryInfo.Visibility.EXTERNAL;
 
@@ -71,14 +67,4 @@ public class Constants {
      * by the SDK.
      */
     public static final DiscoveryInfo.Visibility DEFAULT_TASK_DISCOVERY_VISIBILITY = DiscoveryInfo.Visibility.CLUSTER;
-
-    /**
-     * The duration in seconds to decline offers the scheduler does not need for the foreseeable future.
-     */
-    public static final int LONG_DECLINE_SECONDS = Math.toIntExact(Duration.ofDays(14).getSeconds());
-
-    /**
-     * The duration in seconds to decline offers the scheduler does not need for a short time.
-     */
-    public static final int SHORT_DECLINE_SECONDS = 5;
 }

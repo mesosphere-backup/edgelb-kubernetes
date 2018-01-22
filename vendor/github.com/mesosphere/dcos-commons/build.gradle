@@ -10,7 +10,7 @@ buildscript {
 
 plugins {
     id 'com.github.johnrengelman.shadow' version '1.2.3'
-    id 'com.github.ksoichiro.console.reporter' version '0.5.0'
+    id 'com.github.ksoichiro.console.reporter' version '0.4.0'
 }
 
 // Importing org.fusesource.jansi.AnsiConsole is not enough to avoid aforementioned failure
@@ -45,13 +45,12 @@ allprojects {
     // 2. In the GitHub UI, add a Release entry against the tag created in step 1. List any changes in release notes.
     // 3. Create a PR which bumps this from '0.10.0-SNAPSHOT' to '0.11.0-SNAPSHOT' in master to start the 0.11.0 track.
     // --
-    version = '0.32.0-SNAPSHOT'
+    version = '0.30.3-SNAPSHOT'
 
     sourceCompatibility = '1.8'
     targetCompatibility = '1.8'
 
     repositories {
-        jcenter()
         mavenLocal()
         mavenCentral()
         maven {
@@ -102,15 +101,18 @@ allprojects {
         }
     }
 
-    tasks.withType(Javadoc) {
-        options.addStringOption('Xdoclint:none', '-quiet')
-    }
-
     // Print results on the fly
     test {
         testLogging {
             events 'passed', 'skipped', 'failed'
         }
+    }
+
+    task copyExecutor(type: Copy) {
+        from('src/../../../sdk/executor/build/distributions/') {
+            include '**/*'
+        }
+        into('build/distributions')
     }
 }
 

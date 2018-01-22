@@ -5,8 +5,6 @@ import org.apache.mesos.Protos.Offer;
 import org.apache.mesos.Protos.Resource;
 import org.apache.mesos.Protos.Value;
 
-import com.mesosphere.sdk.offer.Constants;
-
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.List;
@@ -14,7 +12,6 @@ import java.util.List;
 /**
  * This class provides utilities for tests concerned with Offers.
  */
-@SuppressWarnings("deprecation")
 public class OfferTestUtils {
 
     private OfferTestUtils() {
@@ -51,21 +48,14 @@ public class OfferTestUtils {
      * @return An offer with both executor resources and the supplied resources available
      */
     public static Protos.Offer getCompleteOffer(List<Protos.Resource> resources) {
-        return getCompleteOffer(resources, Constants.ANY_ROLE);
+        return getEmptyOfferBuilder().addAllResources(getExecutorResources()).addAllResources(resources).build();
     }
 
-    public static Protos.Offer getCompleteOffer(List<Protos.Resource> resources, String preReservedRole) {
-        return getEmptyOfferBuilder()
-                .addAllResources(getExecutorResources(preReservedRole))
-                .addAllResources(resources)
-                .build();
-    }
-
-    private static Collection<Resource> getExecutorResources(String preReservedRole) {
+    public static Collection<Resource> getExecutorResources() {
         return Arrays.asList(
-                ResourceTestUtils.getUnreservedCpus(0.1, preReservedRole),
-                ResourceTestUtils.getUnreservedMem(256, preReservedRole),
-                ResourceTestUtils.getUnreservedDisk(512, preReservedRole));
+                ResourceTestUtils.getUnreservedScalar("cpus", 0.1),
+                ResourceTestUtils.getUnreservedScalar("mem", 256),
+                ResourceTestUtils.getUnreservedScalar("disk", 512));
     }
 
     public static List<Protos.Offer> getCompleteOffers(Protos.Resource resource) {
@@ -92,6 +82,7 @@ public class OfferTestUtils {
                 .setFrameworkId(TestConstants.FRAMEWORK_ID)
                 .setSlaveId(TestConstants.AGENT_ID)
                 .setHostname(TestConstants.HOSTNAME);
+
     }
 
     /**

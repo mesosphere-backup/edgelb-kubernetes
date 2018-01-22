@@ -69,7 +69,6 @@ public class MesosResource {
         }
     }
 
-    @SuppressWarnings("deprecation")
     private String getRefinedPreviousRole() {
         if (resource.getReservationsCount() <= 1) {
             return resource.getRole();

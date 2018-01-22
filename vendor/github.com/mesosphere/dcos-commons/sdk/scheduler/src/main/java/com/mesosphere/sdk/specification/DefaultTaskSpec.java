@@ -24,16 +24,13 @@ import java.util.Optional;
 public class DefaultTaskSpec implements TaskSpec {
     // TODO: paegun using a reflection-based generator test for difference (not equal) or a different method of
     // determining difference should be explored.
-
+    
     @NotNull
     @Size(min = 1)
     private final String name;
 
     @NotNull
     private final GoalState goalState;
-
-    @NotNull
-    private final Boolean essential;
 
     @Valid
     private final CommandSpec commandSpec;
@@ -65,12 +62,10 @@ public class DefaultTaskSpec implements TaskSpec {
     @Valid
     private Collection<TransportEncryptionSpec> transportEncryption;
 
-    @SuppressWarnings("PMD.SimplifiedTernary")
     @JsonCreator
     public DefaultTaskSpec(
             @JsonProperty("name") String name,
             @JsonProperty("goal") GoalState goalState,
-            @JsonProperty("essential") Boolean essential,
             @JsonProperty("resource-set") ResourceSet resourceSet,
             @JsonProperty("command-spec") CommandSpec commandSpec,
             @JsonProperty("health-check-spec") HealthCheckSpec healthCheckSpec,
@@ -81,9 +76,6 @@ public class DefaultTaskSpec implements TaskSpec {
             @JsonProperty("transport-encryption") Collection<TransportEncryptionSpec> transportEncryption) {
         this.name = name;
         this.goalState = goalState;
-        this.essential = (essential != null)
-                ? essential
-                : true; // default: tasks are essential
         this.resourceSet = resourceSet;
         this.commandSpec = commandSpec;
         this.healthCheckSpec = healthCheckSpec;
@@ -91,8 +83,8 @@ public class DefaultTaskSpec implements TaskSpec {
         this.configFiles = (configFiles != null) ? configFiles : Collections.emptyList();
         this.discoverySpec = discoverySpec;
         this.taskKillGracePeriodSeconds = (taskKillGracePeriodSeconds != null)
-                ? taskKillGracePeriodSeconds
-                : TASK_KILL_GRACE_PERIOD_SECONDS_DEFAULT;
+            ? taskKillGracePeriodSeconds
+            : TASK_KILL_GRACE_PERIOD_SECONDS_DEFAULT;
         this.transportEncryption = (transportEncryption != null) ? transportEncryption : Collections.emptyList();
     }
 
@@ -100,7 +92,6 @@ public class DefaultTaskSpec implements TaskSpec {
         this(
                 builder.name,
                 builder.goalState,
-                builder.essential,
                 builder.resourceSet,
                 builder.commandSpec,
                 builder.healthCheckSpec,
@@ -119,7 +110,6 @@ public class DefaultTaskSpec implements TaskSpec {
         Builder builder = new Builder();
         builder.name = copy.getName();
         builder.goalState = copy.getGoal();
-        builder.essential = copy.isEssential();
         builder.resourceSet = copy.getResourceSet();
         builder.commandSpec = copy.getCommand().orElse(null);
         builder.readinessCheckSpec(copy.getReadinessCheck().orElse(null));
@@ -140,11 +130,6 @@ public class DefaultTaskSpec implements TaskSpec {
     @Override
     public GoalState getGoal() {
         return goalState;
-    }
-
-    @Override
-    public Boolean isEssential() {
-        return essential;
     }
 
     @Override
@@ -212,7 +197,6 @@ public class DefaultTaskSpec implements TaskSpec {
     public static final class Builder {
         private String name;
         private GoalState goalState;
-        private Boolean essential;
         private ResourceSet resourceSet;
         private CommandSpec commandSpec;
         private HealthCheckSpec healthCheckSpec;
@@ -248,25 +232,6 @@ public class DefaultTaskSpec implements TaskSpec {
             return this;
         }
 
-        /**
-         * Sets the {@code essential} bit and returns a reference to this Builder so that the methods can be
-         * chained together.
-         *
-         * @param essential whether relaunching this task relaunches all tasks in the pod
-         * @return a reference to this Builder
-         */
-        public Builder essential(Boolean essential) {
-            this.essential = essential;
-            return this;
-        }
-
-        /**
-         * Sets the {@code resourceSet} and returns a reference to this Builder so that the methods can be
-         * chained together.
-         *
-         * @param resourceSet the {@code resourceSet} to set
-         * @return a reference to this Builder
-         */
         public Builder resourceSet(ResourceSet resourceSet) {
             this.resourceSet = resourceSet;
             return this;

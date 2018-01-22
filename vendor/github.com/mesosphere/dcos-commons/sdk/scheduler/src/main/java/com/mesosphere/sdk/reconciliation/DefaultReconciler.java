@@ -1,8 +1,9 @@
 package com.mesosphere.sdk.reconciliation;
 
-import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableSet;
+import com.google.inject.Inject;
+import com.google.inject.Singleton;
 import org.apache.mesos.Protos;
 import org.apache.mesos.Protos.TaskStatus;
 import org.apache.mesos.SchedulerDriver;
@@ -17,6 +18,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 /**
  * Default implementation of {@link Reconciler}. See {@link Reconciler} for docs.
  */
+@Singleton
 public class DefaultReconciler implements Reconciler {
 
     private static final Logger LOGGER = LoggerFactory.getLogger(DefaultReconciler.class);
@@ -34,6 +36,7 @@ public class DefaultReconciler implements Reconciler {
     private long lastRequestTimeMs;
     private long backOffMs;
 
+    @Inject
     public DefaultReconciler(StateStore stateStore) {
         this.stateStore = stateStore;
         resetTimerValues();
@@ -57,8 +60,8 @@ public class DefaultReconciler implements Reconciler {
             // even if the scheduler thinks no tasks are launched, we should still always perform
             // implicit reconciliation:
             isImplicitReconciliationTriggered.set(false);
-            LOGGER.info("Added {} unreconciled tasks to reconciler: {} tasks to reconcile: {}",
-                    taskStatuses.size(), unreconciled.size(), unreconciled.keySet());
+            LOGGER.info("Added {} unreconciled tasks to reconciler: {} tasks to reconcile",
+                    taskStatuses.size(), unreconciled.size());
         }
     }
 
@@ -82,14 +85,6 @@ public class DefaultReconciler implements Reconciler {
             // PHASE 3: implicit reconciliation has been triggered, we're done
             return;
         }
-
-        /**
-         * NOTE: It is important not to hold a lock when making calls to {@link driver}.  The driver
-         * holds a lock internally when making calls to the Scheduler.  If both the scheduler and driver
-         * follow the pattern of acquiring a lock and making a remote call then deadlocks occur.  To avoid
-         * this we unilaterally enforce that we do not hold any locks while making calls to {@link driver}.
-         */
-        Collection<TaskStatus> tasksToReconcile = Collections.emptyList();
         synchronized (unreconciled) {
             if (!unreconciled.isEmpty()) {
                 final long nowMs = getCurrentTimeMillis();
@@ -101,42 +96,37 @@ public class DefaultReconciler implements Reconciler {
                     long newBackoff = backOffMs * MULTIPLIER;
                     backOffMs = Math.min(newBackoff > 0 ? newBackoff : 0, MAX_BACKOFF_MS);
 
+                    LOGGER.info("Triggering explicit reconciliation of {} remaining tasks, next "
+                            + "explicit reconciliation in {}ms or later",
+                            unreconciled.size(), backOffMs);
                     // pass a COPY of the list, in case driver is doing anything with it..:
-                    tasksToReconcile = ImmutableList.copyOf(unreconciled.values());
+                    driver.reconcileTasks(ImmutableList.copyOf(unreconciled.values()));
                 } else {
                     // timer has not expired yet, do nothing for this call
                     LOGGER.info("Too soon since last explicit reconciliation trigger. Waiting at "
                             + "least {}ms before next explicit reconciliation ({} remaining tasks)",
                             lastRequestTimeMs + backOffMs - nowMs, unreconciled.size());
-                    return;
                 }
+            } else {
+                // PHASE 2: no unreconciled tasks remain, trigger a single implicit reconciliation,
+                // where we get the list of all tasks currently known to Mesos.
+                LOGGER.info("Triggering implicit final reconciliation of all tasks");
+                driver.reconcileTasks(Collections.<TaskStatus>emptyList());
+
+                // reset the timer values in case we're started again in the future
+                resetTimerValues();
+                isImplicitReconciliationTriggered.set(true); // enter PHASE 3/complete
             }
         }
-
-        if (tasksToReconcile.isEmpty()) {
-            // PHASE 2: no unreconciled tasks remain, trigger a single implicit reconciliation,
-            // where we get the list of all tasks currently known to Mesos.
-            LOGGER.info("Triggering implicit final reconciliation of all tasks");
-
-            // reset the timer values in case we're started again in the future
-            resetTimerValues();
-            isImplicitReconciliationTriggered.set(true); // enter PHASE 3/complete
-
-        } else {
-            LOGGER.info("Triggering explicit reconciliation of {} remaining tasks, next "
-                            + "explicit reconciliation in {}ms or later",
-                    unreconciled.size(), backOffMs);
-        }
-
-        driver.reconcileTasks(tasksToReconcile);
     }
 
     @Override
     public void update(final Protos.TaskStatus status) {
+        if (isReconciled()) {
+            return;
+        }
+
         synchronized (unreconciled) {
-            if (unreconciled.isEmpty()) {
-                return;
-            }
             // we've gotten a task status update callback. mark this task as reconciled, if needed
             unreconciled.remove(status.getTaskId().getValue());
             LOGGER.info("Reconciled task: {} ({} remaining tasks)",
@@ -145,24 +135,33 @@ public class DefaultReconciler implements Reconciler {
     }
 
     @Override
-    public boolean isReconciled() {
-        return unreconciled.isEmpty();
-    }
-
-    /**
-     * Returns the list of remaining unreconciled tasks for validation in tests.
-     */
-    @VisibleForTesting
-    Set<String> remaining() {
+    public Set<String> remaining() {
         synchronized (unreconciled) {
             return ImmutableSet.copyOf(unreconciled.keySet());
         }
     }
 
+    @Override
+    public void forceComplete() {
+        // YOLO: wipe state. this may result in inconsistent task state between Mesos and Framework
+        synchronized (unreconciled) {
+            if (!unreconciled.isEmpty()) {
+                LOGGER.warn("Discarding {} remaining unreconciled tasks due to Force Complete call",
+                        unreconciled.size());
+            }
+            unreconciled.clear();
+        }
+        isImplicitReconciliationTriggered.set(true);
+    }
+
+    @Override
+    public boolean isReconciled() {
+        return unreconciled.isEmpty();
+    }
+
     /**
      * Time retrieval broken out into a separate function to allow overriding its behavior in tests.
      */
-    @VisibleForTesting
     protected long getCurrentTimeMillis() {
         return System.currentTimeMillis();
     }

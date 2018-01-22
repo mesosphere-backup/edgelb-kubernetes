@@ -55,16 +55,13 @@ func IsDateTime(str string) bool {
 const (
 	// RFC3339Millis represents a ISO8601 format to millis instead of to nanos
 	RFC3339Millis = "2006-01-02T15:04:05.000Z07:00"
-	// RFC3339Micro represents a ISO8601 format to micro instead of to nano
-	RFC3339Micro = "2006-01-02T15:04:05.000000Z07:00"
 	// DateTimePattern pattern to match for the date-time format from http://tools.ietf.org/html/rfc3339#section-5.6
 	DateTimePattern = `^([0-9]{2}):([0-9]{2}):([0-9]{2})(.[0-9]+)?(z|([+-][0-9]{2}:[0-9]{2}))$`
 )
 
 var (
-	dateTimeFormats = []string{RFC3339Micro, RFC3339Millis, time.RFC3339, time.RFC3339Nano}
+	dateTimeFormats = []string{RFC3339Millis, time.RFC3339, time.RFC3339Nano}
 	rxDateTime      = regexp.MustCompile(DateTimePattern)
-	MarshalFormat   = RFC3339Millis
 )
 
 // ParseDateTime parses a string that represents an ISO8601 time or a unix epoch
@@ -99,7 +96,7 @@ func NewDateTime() DateTime {
 }
 
 func (t DateTime) String() string {
-	return time.Time(t).Format(MarshalFormat)
+	return time.Time(t).Format(RFC3339Millis)
 }
 
 // MarshalText implements the text marshaller interface
@@ -138,7 +135,7 @@ func (t *DateTime) Scan(raw interface{}) error {
 
 // Value converts DateTime to a primitive value ready to written to a database.
 func (t DateTime) Value() (driver.Value, error) {
-	return driver.Value(t.String()), nil
+	return driver.Value(t), nil
 }
 
 func (t DateTime) MarshalJSON() ([]byte, error) {
@@ -148,7 +145,7 @@ func (t DateTime) MarshalJSON() ([]byte, error) {
 }
 
 func (t DateTime) MarshalEasyJSON(w *jwriter.Writer) {
-	w.String(time.Time(t).Format(MarshalFormat))
+	w.String(time.Time(t).Format(RFC3339Millis))
 }
 
 func (t *DateTime) UnmarshalJSON(data []byte) error {

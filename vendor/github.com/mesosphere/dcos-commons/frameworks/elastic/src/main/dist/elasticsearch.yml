@@ -7,7 +7,7 @@ network.bind_host:
   - {{MESOS_CONTAINER_IP}}
   - _local_
 network.publish_host:
-  - {{TASK_NAME}}.{{FRAMEWORK_HOST}}
+  - {{MESOS_CONTAINER_IP}}
   - _local_
 cluster.name: {{CLUSTER_NAME}}
 node.name: {{TASK_NAME}}
@@ -16,43 +16,15 @@ path.logs: "container-path/logs"
 http.port: {{PORT_HTTP}}
 transport.tcp.port: {{PORT_TRANSPORT}}
 bootstrap.memory_lock: false
+node.master: {{MASTER_ENABLED}}
+node.data: {{DATA_ENABLED}}
+node.ingest: {{INGEST_ENABLED}}
 metrics.statsd.host: {{STATSD_UDP_HOST}}
 metrics.statsd.port: {{STATSD_UDP_PORT}}
-
-{{#PLACEMENT_REFERENCED_ZONE}}
-{{#ZONE}}
-node.attr.zone: {{ZONE}}
-cluster.routing.allocation.awareness.attributes: zone
-{{/ZONE}}
-{{/PLACEMENT_REFERENCED_ZONE}}
-
-{{#MASTER_ENABLED}}
 gateway.expected_master_nodes: 3
 gateway.expected_data_nodes: {{DATA_NODE_COUNT}}
 gateway.recover_after_master_nodes: 3
 gateway.recover_after_data_nodes: {{DATA_NODE_COUNT}}
-gateway.recover_after_time: {{GATEWAY_RECOVER_AFTER_TIME}}
-node.master: true
-{{/MASTER_ENABLED}}
-{{^MASTER_ENABLED}}
-node.master: false
-{{/MASTER_ENABLED}}
-node.data: {{DATA_ENABLED}}
-node.ingest: {{INGEST_ENABLED}}
-
-{{#SECURITY_TRANSPORT_ENCRYPTION_ENABLED}}
-# https://www.elastic.co/guide/en/elasticsearch/reference/5.5/security-settings.html#ssl-tls-settings
-xpack.security.enabled: true
-xpack.ssl.key: {{MESOS_SANDBOX}}/node.key
-xpack.ssl.certificate: {{MESOS_SANDBOX}}/node.crt
-xpack.ssl.certificate_authorities: [ "{{MESOS_SANDBOX}}/node.ca" ]
-xpack.ssl.client_authentication: optional
-# Node to node encryption
-xpack.security.transport.ssl.enabled: true
-# Client encryption
-xpack.security.http.ssl.enabled: true
-xpack.security.http.ssl.client_authentication: none
-{{/SECURITY_TRANSPORT_ENCRYPTION_ENABLED}}
 
 {{#SCRIPT_ALLOWED_CONTEXTS}}
 script.allowed_contexts: {{SCRIPT_ALLOWED_CONTEXTS}}

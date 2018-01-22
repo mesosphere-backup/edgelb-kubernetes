@@ -1,15 +1,14 @@
 package com.mesosphere.sdk.offer.taskdata;
 
 import com.mesosphere.sdk.offer.TaskException;
+import com.mesosphere.sdk.testutils.OfferRequirementTestUtils;
 import com.mesosphere.sdk.testutils.TestConstants;
 import org.apache.mesos.Protos;
-import org.apache.mesos.Protos.HealthCheck;
 import org.junit.Assert;
 import org.junit.Test;
 
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -69,28 +68,6 @@ public class TaskLabelReaderWriterTest {
         Assert.assertTrue(new TaskLabelReader(tb.build()).getOfferAttributeStrings().isEmpty());
     }
 
-    @Test
-    public void testReadWriteRegion() {
-        Assert.assertFalse(new TaskLabelReader(getTestTaskInfo()).getRegion().isPresent());
-
-        Protos.TaskInfo.Builder tb = getTestTaskInfo().toBuilder();
-        tb.setLabels(new TaskLabelWriter(tb).setRegion(TestConstants.LOCAL_DOMAIN_INFO.getFaultDomain().getRegion()).toProto());
-
-        Assert.assertTrue(new TaskLabelReader(tb.build()).getRegion().isPresent());
-        Assert.assertEquals(TestConstants.LOCAL_REGION, new TaskLabelReader(tb.build()).getRegion().get());
-    }
-
-    @Test
-    public void testReadWriteZone() {
-        Assert.assertFalse(new TaskLabelReader(getTestTaskInfo()).getZone().isPresent());
-
-        Protos.TaskInfo.Builder tb = getTestTaskInfo().toBuilder();
-        tb.setLabels(new TaskLabelWriter(tb).setZone(TestConstants.LOCAL_DOMAIN_INFO.getFaultDomain().getZone()).toProto());
-
-        Assert.assertTrue(new TaskLabelReader(tb.build()).getZone().isPresent());
-        Assert.assertEquals(TestConstants.ZONE, new TaskLabelReader(tb.build()).getZone().get());
-    }
-
     @Test(expected = TaskException.class)
     public void testGetMissingTaskTypeFails() throws TaskException {
         new TaskLabelReader(getTestTaskInfo()).getType();
@@ -116,12 +93,7 @@ public class TaskLabelReaderWriterTest {
         builder.setLabels(new TaskLabelWriter(builder)
                 .setReadinessCheck(inReadinessCheck)
                 .toProto());
-        Protos.HealthCheck outReadinessCheck = new TaskLabelWriter(builder.build()) {
-            @Override
-            public Optional<HealthCheck> getReadinessCheck() throws TaskException {
-                return super.getReadinessCheck();
-            }
-        }.getReadinessCheck().get();
+        Protos.HealthCheck outReadinessCheck = OfferRequirementTestUtils.getReadinessCheck(builder.build()).get();
 
         Assert.assertEquals(inReadinessCheck.getDelaySeconds(), outReadinessCheck.getDelaySeconds(), 0.0);
     }

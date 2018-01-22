@@ -11,22 +11,11 @@ import java.util.*;
 public class DefaultPlanManager implements PlanManager {
     private final Plan plan;
 
-    /**
-     * Creates a new plan manager for the provided {@link Plan}, which will not be set to an interrupted state.
-     */
-    public static DefaultPlanManager createProceeding(Plan plan) {
-        return new DefaultPlanManager(plan);
-    }
-
-    /**
-     * Creates a new plan manager for the provided {@link Plan}, which will be set to an interrupted state.
-     */
-    public static DefaultPlanManager createInterrupted(Plan plan) {
+    public DefaultPlanManager(final Plan plan) {
+        // All plans begin in an interrupted state.  The deploy plan will
+        // be automatically proceeded when appropriate.  Other plans are
+        // sidecar plans and should be externally proceeded.
         plan.interrupt();
-        return new DefaultPlanManager(plan);
-    }
-
-    private DefaultPlanManager(final Plan plan) {
         this.plan = plan;
     }
 
@@ -47,6 +36,19 @@ public class DefaultPlanManager implements PlanManager {
 
     @Override
     public Set<PodInstanceRequirement> getDirtyAssets() {
-        return PlanUtils.getDirtyAssets(plan);
+        Set<PodInstanceRequirement> dirtyAssets = new HashSet<>();
+        final List<? extends Phase> phases = plan.getChildren();
+        for (Phase phase : phases) {
+            final List<? extends Step> steps = phase.getChildren();
+            for (Step step : steps) {
+                if (step.isAssetDirty()) {
+                    Optional<PodInstanceRequirement> dirtyAsset = step.getAsset();
+                    if (dirtyAsset.isPresent()) {
+                        dirtyAssets.add(dirtyAsset.get());
+                    }
+                }
+            }
+        }
+        return dirtyAssets;
     }
 }

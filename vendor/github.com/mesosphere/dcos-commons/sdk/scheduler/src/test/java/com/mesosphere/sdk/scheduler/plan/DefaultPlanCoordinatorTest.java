@@ -2,8 +2,9 @@ package com.mesosphere.sdk.scheduler.plan;
 
 import com.mesosphere.sdk.offer.OfferAccepter;
 import com.mesosphere.sdk.offer.evaluate.OfferEvaluator;
-import com.mesosphere.sdk.offer.history.OfferOutcomeTracker;
+import com.mesosphere.sdk.scheduler.DefaultTaskKiller;
 import com.mesosphere.sdk.scheduler.TaskKiller;
+import com.mesosphere.sdk.scheduler.recovery.TaskFailureListener;
 import com.mesosphere.sdk.specification.*;
 import com.mesosphere.sdk.state.ConfigStore;
 import com.mesosphere.sdk.state.StateStore;
@@ -11,15 +12,14 @@ import com.mesosphere.sdk.storage.MemPersister;
 import com.mesosphere.sdk.testutils.*;
 import org.apache.mesos.Protos;
 import org.apache.mesos.SchedulerDriver;
-import org.junit.Assert;
-import org.junit.Before;
-import org.junit.Test;
+import org.junit.*;
 import org.mockito.MockitoAnnotations;
 
 import java.util.*;
 import java.util.stream.Collectors;
 
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
 
 /**
  * Tests for {@code DefaultPlanCoordinator}.
@@ -49,8 +49,6 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
     private static final double TASK_B_DISK = 2500.0;
     private static final String TASK_B_CMD = "echo " + TASK_B_NAME;
 
-    private static final Protos.OfferID OTHER_ID = Protos.OfferID.newBuilder().setValue("other-offer").build();
-
     private static final PodSpec podA = TestPodFactory.getPodSpec(
             TASK_A_POD_NAME,
             TestConstants.RESOURCE_SET_ID + "-A",
@@ -75,8 +73,11 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
 
     private DefaultServiceSpec serviceSpecification;
     private DefaultServiceSpec serviceSpecificationB;
+    private OfferAccepter offerAccepter;
     private StateStore stateStore;
+    private TaskKiller taskKiller;
     private DefaultPlanScheduler planScheduler;
+    private TaskFailureListener taskFailureListener;
     private SchedulerDriver schedulerDriver;
     private StepFactory stepFactory;
     private PhaseFactory phaseFactory;
@@ -84,7 +85,9 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
     @Before
     public void setupTest() throws Exception {
         MockitoAnnotations.initMocks(this);
+        offerAccepter = spy(new OfferAccepter(Arrays.asList()));
 
+        taskFailureListener = mock(TaskFailureListener.class);
         schedulerDriver = mock(SchedulerDriver.class);
         serviceSpecification = DefaultServiceSpec.newBuilder()
                 .name(SERVICE_NAME)
@@ -97,18 +100,18 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
         stateStore.storeFrameworkId(TestConstants.FRAMEWORK_ID);
         stepFactory = new DefaultStepFactory(mock(ConfigStore.class), stateStore);
         phaseFactory = new DefaultPhaseFactory(stepFactory);
+        taskKiller = new DefaultTaskKiller(taskFailureListener, schedulerDriver);
 
         planScheduler = new DefaultPlanScheduler(
-                new OfferAccepter(Arrays.asList()),
+                offerAccepter,
                 new OfferEvaluator(
                         stateStore,
-                        new OfferOutcomeTracker(),
                         TestConstants.SERVICE_NAME,
                         UUID.randomUUID(),
-                        SchedulerConfigTestUtils.getTestSchedulerConfig(),
+                        OfferRequirementTestUtils.getTestSchedulerFlags(),
                         true),
                 stateStore,
-                new TaskKiller(schedulerDriver));
+                taskKiller);
         serviceSpecificationB = DefaultServiceSpec.newBuilder()
                 .name(SERVICE_NAME + "-B")
                 .role(TestConstants.ROLE)
@@ -122,15 +125,15 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
         final ArrayList<Protos.Offer> offers = new ArrayList<>();
         offers.addAll(OfferTestUtils.getCompleteOffers(
                 Arrays.asList(
-                        ResourceTestUtils.getUnreservedCpus(cpus),
+                        ResourceTestUtils.getUnreservedCpu(cpus),
                         ResourceTestUtils.getUnreservedMem(mem),
                         ResourceTestUtils.getUnreservedDisk(disk))));
         offers.add(Protos.Offer.newBuilder(OfferTestUtils.getCompleteOffers(
                 Arrays.asList(
-                        ResourceTestUtils.getUnreservedCpus(cpus),
+                        ResourceTestUtils.getUnreservedCpu(cpus),
                         ResourceTestUtils.getUnreservedMem(mem),
                         ResourceTestUtils.getUnreservedDisk(disk))).get(0))
-                .setId(OTHER_ID)
+                .setId(Protos.OfferID.newBuilder().setValue("other-offer"))
                 .build());
         return offers;
     }
@@ -145,20 +148,18 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
 
     @Test(expected = IllegalArgumentException.class)
     public void testNoPlanManager() {
-        new DefaultPlanCoordinator(Arrays.asList());
+        new DefaultPlanCoordinator(Arrays.asList(), planScheduler);
     }
 
     @Test
     public void testOnePlanManagerPendingSufficientOffer() throws Exception {
         final Plan plan = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
-        final PlanManager planManager = DefaultPlanManager.createProceeding(plan);
-        final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(Arrays.asList(planManager));
-        Assert.assertEquals(
-                Arrays.asList(TestConstants.OFFER_ID),
-                planScheduler.resourceOffers(
-                        schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+        final PlanManager planManager = new DefaultPlanManager(plan);
+        planManager.getPlan().proceed();
+        final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
+                Arrays.asList(planManager), planScheduler);
+        Assert.assertEquals(1, coordinator.processOffers(schedulerDriver, getOffers(SUFFICIENT_CPUS,
+                SUFFICIENT_MEM, SUFFICIENT_DISK)).size());
     }
 
     @Test
@@ -225,13 +226,9 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
     public void testOnePlanManagerPendingInSufficientOffer() throws Exception {
         final Plan plan = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
         final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
-                Arrays.asList(DefaultPlanManager.createInterrupted(plan)));
-        Assert.assertEquals(
-                Collections.emptyList(),
-                planScheduler.resourceOffers(
-                        schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, INSUFFICIENT_MEM, INSUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+                Arrays.asList(new DefaultPlanManager(plan)), planScheduler);
+        Assert.assertEquals(0, coordinator.processOffers(schedulerDriver, getOffers(SUFFICIENT_CPUS,
+                INSUFFICIENT_MEM, INSUFFICIENT_DISK)).size());
     }
 
     @Test
@@ -239,27 +236,23 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
         final Plan plan = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
         plan.getChildren().get(0).getChildren().get(0).forceComplete();
         final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
-                Arrays.asList(DefaultPlanManager.createInterrupted(plan)));
-        Assert.assertEquals(
-                Collections.emptyList(),
-                planScheduler.resourceOffers(
-                        schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+                Arrays.asList(new DefaultPlanManager(plan)), planScheduler);
+        Assert.assertEquals(0, coordinator.processOffers(schedulerDriver, getOffers(SUFFICIENT_CPUS,
+                SUFFICIENT_MEM, SUFFICIENT_DISK)).size());
     }
 
     @Test
     public void testTwoPlanManagersPendingPlansDisjointAssets() throws Exception {
         final Plan planA = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
         final Plan planB = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecificationB);
+        final DefaultPlanManager planManagerA = new DefaultPlanManager(planA);
+        final DefaultPlanManager planManagerB = new DefaultPlanManager(planB);
+        planManagerA.getPlan().proceed();
+        planManagerB.getPlan().proceed();
         final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
-                Arrays.asList(DefaultPlanManager.createProceeding(planA), DefaultPlanManager.createProceeding(planB)));
-        Assert.assertEquals(
-                Arrays.asList(TestConstants.OFFER_ID, OTHER_ID),
-                planScheduler.resourceOffers(
-                        schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+                Arrays.asList(planManagerA, planManagerB), planScheduler);
+        Assert.assertEquals(2, coordinator.processOffers(schedulerDriver, getOffers(SUFFICIENT_CPUS,
+                SUFFICIENT_MEM, SUFFICIENT_DISK)).size());
     }
 
     @Test
@@ -269,42 +262,52 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
                 .name(serviceSpecification.getName() + "-B")
                 .build();
         final Plan planB = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecB);
+        final PlanManager planManagerA = new DefaultPlanManager(planA);
+        final PlanManager planManagerB = new DefaultPlanManager(planB);
+        planManagerA.getPlan().proceed();
+        planManagerB.getPlan().proceed();
         final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
-                Arrays.asList(DefaultPlanManager.createProceeding(planA), DefaultPlanManager.createProceeding(planB)));
+                Arrays.asList(planManagerA, planManagerB),
+                planScheduler);
+
         Assert.assertEquals(
-                Arrays.asList(TestConstants.OFFER_ID),
-                planScheduler.resourceOffers(
+                1,
+                coordinator.processOffers(
                         schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+                        getOffers(
+                                SUFFICIENT_CPUS,
+                                SUFFICIENT_MEM,
+                                SUFFICIENT_DISK)).size());
     }
 
     @Test
     public void testTwoPlanManagersCompletePlans() throws Exception {
         final Plan planA = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
         final Plan planB = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
-        final DefaultPlanManager planManagerA = DefaultPlanManager.createInterrupted(planA);
-        final DefaultPlanManager planManagerB = DefaultPlanManager.createInterrupted(planB);
+        final DefaultPlanManager planManagerA = new DefaultPlanManager(planA);
+        final DefaultPlanManager planManagerB = new DefaultPlanManager(planB);
 
         planA.getChildren().get(0).getChildren().get(0).forceComplete();
         planB.getChildren().get(0).getChildren().get(0).forceComplete();
 
         final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
-                Arrays.asList(planManagerA, planManagerB));
-        Assert.assertEquals(
-                Collections.emptyList(),
-                planScheduler.resourceOffers(
-                        schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+                Arrays.asList(planManagerA, planManagerB), planScheduler);
+
+        Assert.assertEquals(0, coordinator.processOffers(schedulerDriver, getOffers(SUFFICIENT_CPUS,
+                SUFFICIENT_MEM, SUFFICIENT_DISK)).size());
     }
 
     @Test
     public void testTwoPlanManagersPendingPlansSameAssetsDifferentOrder() throws Exception {
         final Plan planA = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
         final Plan planB = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
+        final PlanManager planManagerA = new DefaultPlanManager(planA);
+        final PlanManager planManagerB = new DefaultPlanManager(planB);
+        planManagerA.getPlan().proceed();
+        planManagerB.getPlan().proceed();
         final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
-                Arrays.asList(DefaultPlanManager.createProceeding(planA), DefaultPlanManager.createProceeding(planB)));
+                Arrays.asList(planManagerA, planManagerB),
+                planScheduler);
 
         Assert.assertTrue(planA.getChildren().get(0).getChildren().get(0).getStatus().equals(Status.PENDING));
         ((DeploymentStep) planB.getChildren().get(0).getChildren().get(0)).setStatus(Status.PREPARED);
@@ -314,13 +317,32 @@ public class DefaultPlanCoordinatorTest extends DefaultCapabilitiesTestSuite {
         // PlanCoordinator should ensure that PlanA PlanManager knows about PlanB's (and any other configured plan's)
         // dirty assets.
         Assert.assertEquals(
-                Arrays.asList(TestConstants.OFFER_ID),
-                planScheduler.resourceOffers(
+                1,
+                coordinator.processOffers(
                         schedulerDriver,
-                        getOffers(SUFFICIENT_CPUS, SUFFICIENT_MEM, SUFFICIENT_DISK),
-                        coordinator.getCandidates()));
+                        getOffers(
+                                SUFFICIENT_CPUS,
+                                SUFFICIENT_MEM,
+                                SUFFICIENT_DISK)).size());
 
         Assert.assertTrue(planB.getChildren().get(0).getChildren().get(0).getStatus().equals(Status.STARTING));
         Assert.assertTrue(planA.getChildren().get(0).getChildren().get(0).getStatus().equals(Status.PENDING));
+    }
+
+    @Test
+    public void testHasOperations() throws Exception {
+        final Plan planA = new DeployPlanFactory(phaseFactory).getPlan(serviceSpecification);
+        final PlanManager planManagerA = new DefaultPlanManager(planA);
+        final DefaultPlanCoordinator coordinator = new DefaultPlanCoordinator(
+                Arrays.asList(planManagerA),
+                planScheduler);
+
+        Assert.assertFalse(coordinator.hasOperations());
+
+        planManagerA.getPlan().proceed();
+        Assert.assertTrue(coordinator.hasOperations());
+
+        planManagerA.getPlan().getChildren().get(0).getChildren().get(0).forceComplete();
+        Assert.assertFalse(coordinator.hasOperations());
     }
 }

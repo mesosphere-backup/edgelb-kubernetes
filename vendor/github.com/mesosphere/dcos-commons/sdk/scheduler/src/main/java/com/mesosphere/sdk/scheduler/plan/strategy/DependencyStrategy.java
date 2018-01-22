@@ -23,9 +23,4 @@ public class DependencyStrategy<C extends Element> extends InterruptibleStrategy
         // Fixed prerequites as defined in the provided helper:
         return helper.getCandidates(isInterrupted(), dirtyAssets);
     }
-
-    @Override
-    public String getName() {
-        return "dependency";
-    }
 }

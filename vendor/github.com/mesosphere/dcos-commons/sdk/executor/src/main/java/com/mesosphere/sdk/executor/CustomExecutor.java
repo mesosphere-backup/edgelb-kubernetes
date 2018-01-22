@@ -12,6 +12,8 @@ import com.google.protobuf.TextFormat;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Optional;
 import java.util.concurrent.*;
 
@@ -21,24 +23,20 @@ import java.util.concurrent.*;
 public class CustomExecutor implements Executor {
     private static final Logger LOGGER = LoggerFactory.getLogger(CustomExecutor.class);
     private static final int HEALTH_CHECK_THREAD_POOL_SIZE = 10;
-    private static final ScheduledExecutorService HEALTH_CHECK_THREAD_POOL =
+    private static final ScheduledExecutorService scheduledExecutorService =
             Executors.newScheduledThreadPool(HEALTH_CHECK_THREAD_POOL_SIZE);
 
+    private final Map<Protos.TaskID, LaunchedTask> launchedTasks = new HashMap<>();
     private final ExecutorService executorService;
     private final ExecutorTaskFactory executorTaskFactory;
-    private final LaunchedTaskStore launchedTaskStore;
 
-    public CustomExecutor() {
-        this(Executors.newCachedThreadPool(), new DefaultExecutorTaskFactory(), new LaunchedTaskStore.ExitCallback());
-    }
+    private volatile Protos.SlaveInfo slaveInfo;
 
     public CustomExecutor(
             final ExecutorService executorService,
-            ExecutorTaskFactory executorTaskFactory,
-            Runnable exitCallback) {
+            ExecutorTaskFactory executorTaskFactory) {
         this.executorService = executorService;
         this.executorTaskFactory = executorTaskFactory;
-        this.launchedTaskStore = new LaunchedTaskStore(exitCallback);
     }
 
     @Override
@@ -46,14 +44,15 @@ public class CustomExecutor implements Executor {
             ExecutorDriver driver,
             Protos.ExecutorInfo executorInfo,
             Protos.FrameworkInfo frameworkInfo,
-            Protos.SlaveInfo agentInfo) {
+            Protos.SlaveInfo slaveInfo) {
         LOGGER.info("Registered executor: {}", TextFormat.shortDebugString(executorInfo));
-        executorService.submit(launchedTaskStore.getMonitor());
+        this.slaveInfo = slaveInfo;
     }
 
     @Override
-    public void reregistered(ExecutorDriver driver, Protos.SlaveInfo agentInfo) {
-        LOGGER.info("Re-registered on agent: {}", agentInfo.getId().getValue());
+    public void reregistered(ExecutorDriver driver, Protos.SlaveInfo slaveInfo) {
+        LOGGER.info("Re-registered on slave: {}", slaveInfo.getId().getValue());
+        this.slaveInfo = slaveInfo;
     }
 
     @Override
@@ -71,8 +70,9 @@ public class CustomExecutor implements Executor {
             LOGGER.info("Unpacked command: {}", TextFormat.shortDebugString(unpackedTaskInfo.getCommand()));
             final ExecutorTask taskToExecute = executorTaskFactory.createTask(unpackedTaskInfo, driver);
 
-            LaunchedTask launchedTask = new LaunchedTask(taskToExecute, executorService);
-            launchedTaskStore.put(unpackedTaskInfo.getTaskId(), launchedTask);
+            Future<?> future = executorService.submit(taskToExecute);
+            LaunchedTask launchedTask = new LaunchedTask(taskToExecute, future);
+            launchedTasks.put(unpackedTaskInfo.getTaskId(), launchedTask);
             scheduleHealthCheck(driver, unpackedTaskInfo, launchedTask);
             scheduleReadinessCheck(driver, unpackedTaskInfo, launchedTask);
         } catch (Throwable t) {
@@ -97,6 +97,7 @@ public class CustomExecutor implements Executor {
             LaunchedTask launchedTask) {
 
         if (!taskInfo.hasHealthCheck()) {
+            LOGGER.info("No health check for task: {}", taskInfo.getName());
             return;
         }
 
@@ -112,12 +113,12 @@ public class CustomExecutor implements Executor {
         try {
             readinessCheckOptional = new ExecutorTaskLabelReader(taskInfo).getReadinessCheck();
         } catch (TaskException e) {
-            LOGGER.error(String.format(
-                    "Failed to extract readiness check from task: %s", taskInfo.getTaskId().getValue()), e);
+            LOGGER.error("Failed to extract readiness check.", e);
             return;
         }
 
         if (!readinessCheckOptional.isPresent()) {
+            LOGGER.info("No readiness check for task: {}", taskInfo.getName());
             return;
         }
 
@@ -138,9 +139,8 @@ public class CustomExecutor implements Executor {
                             CheckHandler.create(
                                     executorDriver,
                                     taskInfo,
-                                    launchedTask,
                                     check,
-                                    HEALTH_CHECK_THREAD_POOL,
+                                    scheduledExecutorService,
                                     new CheckStats(taskInfo.getName()),
                                     checkType),
                             launchedTask,
@@ -171,7 +171,17 @@ public class CustomExecutor implements Executor {
 
     @Override
     public void killTask(ExecutorDriver driver, Protos.TaskID taskId) {
-        launchedTaskStore.kill(taskId);
+        try {
+            if (!launchedTasks.containsKey(taskId)) {
+                LOGGER.error("Unable to kill unknown TaskID: {}", taskId.getValue());
+                return;
+            }
+            LOGGER.info("Stopping task as part of killTask: {}", taskId.getValue());
+            final LaunchedTask launchedTask = launchedTasks.get(taskId);
+            launchedTask.stop();
+        } catch (Throwable t) {
+            LOGGER.error(String.format("Error killing task %s", taskId.getValue()), t);
+        }
     }
 
     @Override
@@ -182,11 +192,25 @@ public class CustomExecutor implements Executor {
     @Override
     public void shutdown(ExecutorDriver driver) {
         LOGGER.info("Shutting down now.");
-        launchedTaskStore.killAll();
+
+        // Shutdown all tasks
+        for (Map.Entry<Protos.TaskID, LaunchedTask> entry : launchedTasks.entrySet()) {
+            final Protos.TaskID taskId = entry.getKey();
+            try {
+                LOGGER.info("Stopping task as part of executor shutdown: {}", taskId.getValue());
+                killTask(driver, taskId);
+            } catch (Throwable t) {
+                LOGGER.error(String.format("Error stopping task %s", taskId.getValue()), t);
+            }
+        }
     }
 
     @Override
     public void error(ExecutorDriver driver, String message) {
         LOGGER.error("Received error: {}", message);
+    }
+
+    Optional<Protos.SlaveInfo> getSlaveInfo() {
+        return Optional.ofNullable(slaveInfo);
     }
 }

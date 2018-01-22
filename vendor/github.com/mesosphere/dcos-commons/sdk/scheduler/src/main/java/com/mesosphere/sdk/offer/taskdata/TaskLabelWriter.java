@@ -5,7 +5,6 @@ import java.util.UUID;
 
 import com.google.api.client.repackaged.com.google.common.annotations.VisibleForTesting;
 import com.mesosphere.sdk.offer.TaskException;
-import org.apache.mesos.Protos;
 import org.apache.mesos.Protos.Attribute;
 import org.apache.mesos.Protos.HealthCheck;
 import org.apache.mesos.Protos.Label;
@@ -83,24 +82,6 @@ public class TaskLabelWriter {
     }
 
     /**
-     * Stores the {@link org.apache.mesos.Protos.DomainInfo.FaultDomain.ZoneInfo}.
-     * Any existing stored zone information is overwritten.
-     */
-    public TaskLabelWriter setZone(Protos.DomainInfo.FaultDomain.ZoneInfo zone) {
-        writer.put(LabelConstants.OFFER_ZONE_LABEL, zone.getName());
-        return this;
-    }
-
-    /**
-     * Stores the {@link org.apache.mesos.Protos.DomainInfo.FaultDomain.RegionInfo}.
-     * Any existing stored region information is overwritten.
-     */
-    public TaskLabelWriter setRegion(Protos.DomainInfo.FaultDomain.RegionInfo region) {
-        writer.put(LabelConstants.OFFER_REGION_LABEL, region.getName());
-        return this;
-    }
-
-    /**
      * Stores the agent hostname from the provided {@link Offer}.
      * Any existing stored hostname is overwritten.
      */
@@ -110,7 +91,7 @@ public class TaskLabelWriter {
     }
 
     /**
-     * Sets a label on a TaskInfo indicating the Task's {@link GoalState}, e.g. RUNNING, FINISH or ONCE.
+     * Sets a label on a TaskInfo indicating the Task's {@link GoalState}, e.g. RUNNING or FINISHED.
      */
     public TaskLabelWriter setGoalState(GoalState goalState) {
         writer.put(LabelConstants.GOAL_STATE_LABEL, goalState.name());
@@ -120,8 +101,7 @@ public class TaskLabelWriter {
     /**
      * Sets a {@link Label} indicating the target configuration.
      *
-     * @param targetConfigurationId ID referencing a particular Configuration in the
-     *                              {@link com.mesosphere.sdk.state.ConfigStore}
+     * @param targetConfigurationId ID referencing a particular Configuration in the {@link ConfigStore}
      */
     public TaskLabelWriter setTargetConfiguration(UUID targetConfigurationId) {
         writer.put(LabelConstants.TARGET_CONFIGURATION_LABEL, targetConfigurationId.toString());

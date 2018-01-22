@@ -22,11 +22,6 @@ public class SerialStrategy<C extends Element> extends InterruptibleStrategy<C> 
         return getDependencyStrategyHelper(elements).getCandidates(isInterrupted(), dirtyAssets);
     }
 
-    @Override
-    public String getName() {
-        return "serial";
-    }
-
     public StrategyGenerator<C> getGenerator() {
         return new Generator<>();
     }

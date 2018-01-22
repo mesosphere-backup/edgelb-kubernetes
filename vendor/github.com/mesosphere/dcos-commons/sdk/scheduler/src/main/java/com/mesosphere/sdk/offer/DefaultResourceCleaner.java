@@ -1,7 +1,6 @@
 package com.mesosphere.sdk.offer;
 
 import com.google.protobuf.TextFormat;
-import com.mesosphere.sdk.scheduler.decommission.DecommissionPlanFactory;
 import com.mesosphere.sdk.scheduler.recovery.FailureUtils;
 import com.mesosphere.sdk.state.StateStore;
 import com.mesosphere.sdk.state.StateStoreException;
@@ -19,9 +18,12 @@ import java.util.stream.Collectors;
  * unexpected Reserved resources and persistent volumes.
  */
 public class DefaultResourceCleaner implements ResourceCleaner {
-    private static final Logger LOGGER = LoggerFactory.getLogger(DefaultResourceCleaner.class);
+    private static final Logger logger = LoggerFactory.getLogger(DefaultResourceCleaner.class);
 
-    private final Collection<Resource> expectedResources;
+    // Only Persistent Volumes are DESTROYed
+    private final Set<String> expectedPersistentVolumeIds;
+    // Both Persistent Volumes AND Reserved Resources are UNRESERVEd
+    private final Set<String> expectedReservedResourceIds;
 
     /**
      * Creates a new {@link DefaultResourceCleaner} which retrieves expected resource
@@ -31,7 +33,9 @@ public class DefaultResourceCleaner implements ResourceCleaner {
      *             if there's a failure when retrieving resource information
      */
     public DefaultResourceCleaner(StateStore stateStore) {
-        expectedResources = getExpectedResources(stateStore);
+        Collection<Resource> expectedResources = getExpectedResources(stateStore);
+        this.expectedPersistentVolumeIds = getPersistentVolumeIds(expectedResources);
+        this.expectedReservedResourceIds = getReservedResourceIds(expectedResources);
     }
 
     /**
@@ -42,7 +46,7 @@ public class DefaultResourceCleaner implements ResourceCleaner {
      */
     @Override
     public Collection<? extends Resource> getReservedResourcesToBeUnreserved(Offer offer) {
-        return selectUnexpectedResources(getReservedResourceIds(expectedResources), getReservedResourcesById(offer));
+        return selectUnexpectedResources(expectedReservedResourceIds, getReservedResourcesById(offer));
     }
 
     /**
@@ -53,7 +57,7 @@ public class DefaultResourceCleaner implements ResourceCleaner {
      */
     @Override
     public Collection<? extends Resource> getPersistentVolumesToBeDestroyed(Offer offer) {
-        return selectUnexpectedResources(getPersistentVolumeIds(expectedResources), getPersistentVolumesById(offer));
+        return selectUnexpectedResources(expectedPersistentVolumeIds, getPersistentVolumesById(offer));
     }
 
     /**
@@ -66,7 +70,7 @@ public class DefaultResourceCleaner implements ResourceCleaner {
 
         for (Map.Entry<String, Resource> entry : resourcesById.entrySet()) {
             if (!expectedIds.contains(entry.getKey())) {
-                LOGGER.info("Unexpected reserved resource found: {}", TextFormat.shortDebugString(entry.getValue()));
+                logger.info("Unexpected reserved resource found: {}", TextFormat.shortDebugString(entry.getValue()));
                 unexpectedResources.add(entry.getValue());
             }
         }
@@ -74,18 +78,12 @@ public class DefaultResourceCleaner implements ResourceCleaner {
     }
 
     /**
-     * Returns a list of all expected resources, which are extracted from all {@link org.apache.mesos.Protos.TaskInfo}s
+     * Returns a list of all expected resources, which are extracted from all {@link Protos.TaskInfo}s
      * produced by the provided {@link StateStore}.
      */
     private static Collection<Resource> getExpectedResources(StateStore stateStore) throws StateStoreException {
         return stateStore.fetchTasks().stream()
-                // The task's resources should be unreserved if:
-                // - the task is marked as permanently failed, or
-                // - the task is in the process of being decommissioned
-                .filter(taskInfo ->
-                        !FailureUtils.isPermanentlyFailed(taskInfo) &&
-                        !stateStore.fetchGoalOverrideStatus(taskInfo.getName())
-                                .equals(DecommissionPlanFactory.DECOMMISSIONING_STATUS))
+                .filter(taskInfo -> !FailureUtils.isPermanentlyFailed(taskInfo))
                 .map(ResourceUtils::getAllResources)
                 .flatMap(Collection::stream)
                 .collect(Collectors.toList());

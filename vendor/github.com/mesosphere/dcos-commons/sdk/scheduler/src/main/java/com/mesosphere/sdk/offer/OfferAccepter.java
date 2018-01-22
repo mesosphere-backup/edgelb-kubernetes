@@ -1,6 +1,7 @@
 package com.mesosphere.sdk.offer;
 
 import com.google.protobuf.TextFormat;
+
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.mesos.Protos.Filters;
 import org.apache.mesos.Protos.Offer.Operation;
@@ -9,7 +10,11 @@ import org.apache.mesos.SchedulerDriver;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 
 /**
  * The OfferAccepter extracts the Mesos Operations encapsulated by the OfferRecommendation and accepts Offers with those
@@ -19,20 +24,10 @@ public class OfferAccepter {
     private static final Logger LOGGER = LoggerFactory.getLogger(OfferAccepter.class);
     private static final Filters FILTERS = Filters.newBuilder().setRefuseSeconds(1).build();
 
-    private final Collection<OperationRecorder> recorders = new ArrayList<>();
+    private Collection<OperationRecorder> recorders;
 
     public OfferAccepter(List<OperationRecorder> recorders) {
-        this.recorders.addAll(recorders);
-    }
-
-    /**
-     * Adds a recorder for accepted operations.
-     *
-     * @return {@code this}
-     */
-    public OfferAccepter addRecorder(OperationRecorder recorder) {
-        this.recorders.add(recorder);
-        return this;
+        this.recorders = recorders;
     }
 
     public List<OfferID> accept(SchedulerDriver driver, List<OfferRecommendation> recommendations) {

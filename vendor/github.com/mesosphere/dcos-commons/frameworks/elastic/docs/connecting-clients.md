@@ -1,10 +1,7 @@
 ---
-layout: layout.pug
-navigationTitle: 
-excerpt:
-title: Connecting Clients
-menuWeight: 50
-
+post_title: Connecting Clients
+menu_order: 50
+enterprise: 'no'
 ---
 
 # Connecting Clients
@@ -70,7 +67,7 @@ This command launches a new Kibana application with the default name `kibana` an
   ```
   http://<dcos_url>/service/kibana/login
   ```
-  and log in with `elastic`/`changeme`. [More information on installing X-Pack](https://docs.mesosphere.com/services/elastic/v2.0.0-5.5.1/elastic-x-pack/).
+  and log in with `elastic`/`changeme`.
   
   Otherwise go to
   ```

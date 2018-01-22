@@ -1,10 +1,7 @@
 ---
-layout: layout.pug
-navigationTitle: 
-excerpt:
-title: Limitations
-menuWeight: 100
-
+post_title: Limitations
+menu_order: 100
+enterprise: 'no'
 ---
 
 ## Out-of-band configuration
@@ -29,10 +26,3 @@ If your cluster doesn't have enough resources to deploy the service as requested
 
 When the service is deployed on a virtual network, the service may not be switched to host networking without a full re-installation. The same is true for attempting to switch from host to virtual networking.
 
-## Task Environment Variables
-
-Each service task has some number of environment variables, which are used to configure the task. These environment variables are set by the service scheduler. While it is _possible_ to use these environment variables in adhoc scripts (e.g. via `dcos task exec`), the name of a given environment variable may change between versions of a service and should not be considered a public API of the service.
-
-## Zones
-
-DC/OS Zones allow the service to implement rack-awareness. When the service is deployed with some zone configuration (or lack thereof), it cannot be upgraded/downgraded to another zone configuration.

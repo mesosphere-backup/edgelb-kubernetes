@@ -7,7 +7,6 @@ import com.mesosphere.sdk.scheduler.plan.Status;
 import com.mesosphere.sdk.testutils.DefaultCapabilitiesTestSuite;
 import com.mesosphere.sdk.testutils.ResourceTestUtils;
 import com.mesosphere.sdk.testutils.TestConstants;
-
 import org.junit.Before;
 import org.junit.Test;
 
@@ -16,12 +15,13 @@ import java.util.Collections;
 import java.util.Optional;
 
 public class ResourceCleanupStepTest extends DefaultCapabilitiesTestSuite {
+    private static final String RESOURCE_ID = "resource id";
     private static final String DIFFERENT_RESOURCE_ID = "nope";
     private ResourceCleanupStep resourceCleanupStep;
 
     @Before
     public void beforeEach() throws Exception {
-        resourceCleanupStep = new ResourceCleanupStep(TestConstants.RESOURCE_ID, Status.PENDING);
+        resourceCleanupStep = new ResourceCleanupStep(RESOURCE_ID);
     }
 
     @Test
@@ -34,7 +34,11 @@ public class ResourceCleanupStepTest extends DefaultCapabilitiesTestSuite {
     @Test
     public void testMatchingUpdateOfferStatus() throws Exception {
         OfferRecommendation offerRecommendation = new UnreserveOfferRecommendation(null,
-                ResourceTestUtils.getReservedCpus(1.0, TestConstants.RESOURCE_ID));
+                ResourceTestUtils.getExpectedScalar("cpus",
+                        1.0,
+                        RESOURCE_ID,
+                        TestConstants.ROLE,
+                        TestConstants.PRINCIPAL));
         resourceCleanupStep.start();
         resourceCleanupStep.updateOfferStatus(Collections.singletonList(offerRecommendation));
         assert resourceCleanupStep.getStatus().equals(Status.COMPLETE);
@@ -43,7 +47,11 @@ public class ResourceCleanupStepTest extends DefaultCapabilitiesTestSuite {
     @Test
     public void testNonMatchingUpdateOfferStatus() throws Exception {
         OfferRecommendation offerRecommendation = new UnreserveOfferRecommendation(null,
-                ResourceTestUtils.getReservedCpus(1.0, DIFFERENT_RESOURCE_ID));
+                ResourceTestUtils.getExpectedScalar("cpus",
+                        1.0,
+                        DIFFERENT_RESOURCE_ID,
+                        TestConstants.ROLE,
+                        TestConstants.PRINCIPAL));
         resourceCleanupStep.start();
         resourceCleanupStep.updateOfferStatus(Collections.singletonList(offerRecommendation));
         assert resourceCleanupStep.getStatus().equals(Status.PREPARED);
@@ -51,9 +59,9 @@ public class ResourceCleanupStepTest extends DefaultCapabilitiesTestSuite {
 
     @Test
     public void testMixedUpdateOfferStatus() throws Exception {
-        OfferRecommendation rec1 = new CreateOfferRecommendation(null, ResourceTestUtils.getReservedRootVolume(999.0));
+        OfferRecommendation rec1 = new CreateOfferRecommendation(null, ResourceTestUtils.getExpectedRootVolume(999.0));
         OfferRecommendation rec2 = new UnreserveOfferRecommendation(null,
-                ResourceTestUtils.getReservedCpus(1.0, TestConstants.RESOURCE_ID));
+                ResourceTestUtils.getExpectedScalar("cpus", 1.0, RESOURCE_ID, TestConstants.ROLE, TestConstants.PRINCIPAL));
         resourceCleanupStep.start();
         resourceCleanupStep.updateOfferStatus(Arrays.asList(rec1, rec2));
         assert resourceCleanupStep.getStatus().equals(Status.COMPLETE);
@@ -61,7 +69,7 @@ public class ResourceCleanupStepTest extends DefaultCapabilitiesTestSuite {
 
     @Test
     public void testGetAsset() throws Exception {
-        assert resourceCleanupStep.getPodInstanceRequirement().equals(Optional.empty());
+        assert resourceCleanupStep.getAsset().equals(Optional.empty());
     }
 
     @Test

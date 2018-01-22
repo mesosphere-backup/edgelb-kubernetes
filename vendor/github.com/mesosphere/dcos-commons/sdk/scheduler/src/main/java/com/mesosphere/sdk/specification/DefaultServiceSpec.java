@@ -2,14 +2,8 @@ package com.mesosphere.sdk.specification;
 
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.core.JsonParseException;
-import com.fasterxml.jackson.core.JsonParser;
-import com.fasterxml.jackson.databind.DeserializationContext;
 import com.fasterxml.jackson.databind.DeserializationFeature;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.deser.std.StdDeserializer;
-import com.fasterxml.jackson.databind.module.SimpleModule;
-import com.fasterxml.jackson.databind.node.TextNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.mesosphere.sdk.config.ConfigurationComparator;
 import com.mesosphere.sdk.config.ConfigurationFactory;
@@ -17,7 +11,7 @@ import com.mesosphere.sdk.config.SerializationUtils;
 import com.mesosphere.sdk.config.TaskEnvRouter;
 import com.mesosphere.sdk.dcos.DcosConstants;
 import com.mesosphere.sdk.offer.evaluate.placement.*;
-import com.mesosphere.sdk.scheduler.SchedulerConfig;
+import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.specification.validation.UniquePodType;
 import com.mesosphere.sdk.specification.validation.ValidationUtils;
 import com.mesosphere.sdk.specification.yaml.RawServiceSpec;
@@ -35,11 +29,9 @@ import javax.validation.Valid;
 import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
 
-import java.io.File;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.util.*;
-import java.util.stream.Collectors;
 
 
 /**
@@ -97,12 +89,9 @@ public class DefaultServiceSpec implements ServiceSpec {
             return user;
         }
 
-        Optional<PodSpec> podSpecOptional = Optional.empty();
-        if (podSpecs != null) {
-            podSpecOptional = podSpecs.stream()
-                    .filter(podSpec -> podSpec != null && podSpec.getUser() != null && podSpec.getUser().isPresent())
-                    .findFirst();
-        }
+        Optional<PodSpec> podSpecOptional = podSpecs.stream()
+                .filter(podSpec -> podSpec.getUser() != null && podSpec.getUser().isPresent())
+                .findFirst();
 
         if (podSpecOptional.isPresent()) {
             return podSpecOptional.get().getUser().get();
@@ -123,43 +112,15 @@ public class DefaultServiceSpec implements ServiceSpec {
                 builder.user);
     }
 
-    /**
-     * Returns a new generator with the provided configuration.
-     *
-     * @param rawServiceSpec The object model representation of a Service Specification YAML file
-     * @param schedulerConfig Scheduler configuration containing operator-facing knobs
-     * @param configTemplateDir Path to the directory containing any config templates for the service, often the same
-     *     directory as the Service Specification YAML file
-     */
-    public static Generator newGenerator(
-            RawServiceSpec rawServiceSpec, SchedulerConfig schedulerConfig, File configTemplateDir) {
-        return new Generator(rawServiceSpec, schedulerConfig, new TaskEnvRouter(), configTemplateDir);
+
+    public static Generator newGenerator(RawServiceSpec rawServiceSpec, SchedulerFlags schedulerFlags) {
+        return newGenerator(rawServiceSpec, schedulerFlags, new TaskEnvRouter());
     }
 
-    /**
-     * Used by unit tests.
-     */
-    @VisibleForTesting
-    public static Generator newGenerator(File rawServiceSpecFile, SchedulerConfig schedulerConfig) throws Exception {
-        return new Generator(
-                RawServiceSpec.newBuilder(rawServiceSpecFile).build(),
-                schedulerConfig,
-                new TaskEnvRouter(),
-                rawServiceSpecFile.getParentFile()); // assume that any configs are in the same directory as the spec
-    }
-
-    /**
-     * Used by unit tests.
-     */
     @VisibleForTesting
     public static Generator newGenerator(
-            RawServiceSpec rawServiceSpec,
-            SchedulerConfig schedulerConfig,
-            Map<String, String> schedulerEnvironment,
-            File configTemplateDir)
-                    throws Exception {
-        return new Generator(
-                rawServiceSpec, schedulerConfig, new TaskEnvRouter(schedulerEnvironment), configTemplateDir);
+            RawServiceSpec rawServiceSpec, SchedulerFlags schedulerFlags, TaskEnvRouter taskEnvRouter) {
+        return new Generator(rawServiceSpec, schedulerFlags, taskEnvRouter);
     }
 
     public static Builder newBuilder() {
@@ -280,7 +241,7 @@ public class DefaultServiceSpec implements ServiceSpec {
      */
     public static ConfigurationFactory<ServiceSpec> getConfigurationFactory(
             ServiceSpec serviceSpec, Collection<Class<?>> additionalSubtypesToRegister) throws ConfigStoreException {
-        ConfigurationFactory<ServiceSpec> factory = new ConfigFactory(additionalSubtypesToRegister, serviceSpec);
+        ConfigurationFactory<ServiceSpec> factory = new ConfigFactory(additionalSubtypesToRegister);
 
         ServiceSpec loopbackSpecification;
         try {
@@ -325,34 +286,26 @@ public class DefaultServiceSpec implements ServiceSpec {
                 DefaultVolumeSpec.class,
                 ExactMatcher.class,
                 HostnameRule.class,
-                IsLocalRegionRule.class,
                 MaxPerAttributeRule.class,
                 MaxPerHostnameRule.class,
-                MaxPerRegionRule.class,
-                MaxPerZoneRule.class,
                 NamedVIPSpec.class,
                 NotRule.class,
                 OrRule.class,
                 PassthroughRule.class,
                 PortSpec.class,
                 RegexMatcher.class,
-                RegionRule.class,
                 RoundRobinByAttributeRule.class,
                 RoundRobinByHostnameRule.class,
-                RoundRobinByRegionRule.class,
-                RoundRobinByZoneRule.class,
                 TaskTypeLabelConverter.class,
                 TaskTypeRule.class,
-                ZoneRule.class,
                 DefaultSecretSpec.class);
 
         private final ObjectMapper objectMapper;
-        private final GoalState referenceTerminalGoalState;
 
         /**
          * @see DefaultServiceSpec#getConfigurationFactory(ServiceSpec, Collection)
          */
-        private ConfigFactory(Collection<Class<?>> additionalSubtypes, ServiceSpec serviceSpec) {
+        private ConfigFactory(Collection<Class<?>> additionalSubtypes) {
             objectMapper = SerializationUtils.registerDefaultModules(new ObjectMapper());
             objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
             for (Class<?> subtype : defaultRegisteredSubtypes) {
@@ -361,17 +314,6 @@ public class DefaultServiceSpec implements ServiceSpec {
             for (Class<?> subtype : additionalSubtypes) {
                 objectMapper.registerSubtypes(subtype);
             }
-
-            SimpleModule module = new SimpleModule();
-            module.addDeserializer(GoalState.class, new GoalStateDeserializer());
-            objectMapper.registerModule(module);
-
-            referenceTerminalGoalState = getReferenceTerminalGoalState(serviceSpec);
-        }
-
-        @VisibleForTesting
-        public GoalStateDeserializer getGoalStateDeserializer() {
-            return new GoalStateDeserializer();
         }
 
         @Override
@@ -385,52 +327,9 @@ public class DefaultServiceSpec implements ServiceSpec {
             }
         }
 
-        private GoalState getReferenceTerminalGoalState(ServiceSpec serviceSpec) {
-            Collection<TaskSpec> serviceTasks =
-                    serviceSpec.getPods().stream().flatMap(p -> p.getTasks().stream()).collect(Collectors.toList());
-            for (TaskSpec taskSpec : serviceTasks) {
-                if (taskSpec.getGoal().equals(GoalState.FINISHED)) {
-                    return GoalState.FINISHED;
-                }
-            }
-
-            return GoalState.ONCE;
-        }
-
         @VisibleForTesting
         public static final Collection<Class<?>> getDefaultRegisteredSubtypes() {
             return defaultRegisteredSubtypes;
-        }
-
-        /**
-         * Custom deserializer for goal states to accomodate transition from FINISHED to ONCE/FINISH.
-         */
-        public class GoalStateDeserializer extends StdDeserializer<GoalState> {
-
-            public GoalStateDeserializer() {
-                this(null);
-            }
-
-            protected GoalStateDeserializer(Class<?> vc) {
-                super(vc);
-            }
-
-            @Override
-            public GoalState deserialize(
-                    JsonParser p, DeserializationContext ctxt) throws IOException, JsonParseException {
-                String value = ((TextNode) p.getCodec().readTree(p)).textValue();
-
-                if (value.equals("FINISHED") || value.equals("ONCE")) {
-                    return referenceTerminalGoalState;
-                } else if (value.equals("FINISH")) {
-                    return GoalState.FINISH;
-                } else if (value.equals("RUNNING")) {
-                    return GoalState.RUNNING;
-                } else {
-                    logger.warn("Found unknown goal state in config store: {}", value);
-                    return GoalState.UNKNOWN;
-                }
-            }
         }
     }
 
@@ -440,19 +339,16 @@ public class DefaultServiceSpec implements ServiceSpec {
     public static class Generator {
 
         private final RawServiceSpec rawServiceSpec;
-        private final SchedulerConfig schedulerConfig;
+        private final SchedulerFlags schedulerFlags;
         private final TaskEnvRouter taskEnvRouter;
-        private YAMLToInternalMappers.ConfigTemplateReader configTemplateReader;
+        private YAMLToInternalMappers.FileReader fileReader;
 
         private Generator(
-                RawServiceSpec rawServiceSpec,
-                SchedulerConfig schedulerConfig,
-                TaskEnvRouter taskEnvRouter,
-                File configTemplateDir) {
+                RawServiceSpec rawServiceSpec, SchedulerFlags schedulerFlags, TaskEnvRouter taskEnvRouter) {
             this.rawServiceSpec = rawServiceSpec;
-            this.schedulerConfig = schedulerConfig;
+            this.schedulerFlags = schedulerFlags;
             this.taskEnvRouter = taskEnvRouter;
-            this.configTemplateReader = new YAMLToInternalMappers.ConfigTemplateReader(configTemplateDir);
+            this.fileReader = new YAMLToInternalMappers.FileReader();
         }
 
         /**
@@ -476,24 +372,23 @@ public class DefaultServiceSpec implements ServiceSpec {
         }
 
         /**
-         * Assigns a custom {@link YAMLToInternalMappers.ConfigTemplateReader} implementation for reading config file
-         * templates.  This is exposed to support mocking in tests.
+         * Assigns a custom {@link YAMLToInternalMappers.FileReader} implementation for reading config file templates.
+         * This is exposed to support mockery in tests.
          */
         @VisibleForTesting
-        public Generator setConfigTemplateReader(YAMLToInternalMappers.ConfigTemplateReader configTemplateReader) {
-            this.configTemplateReader = configTemplateReader;
+        public Generator setFileReader(YAMLToInternalMappers.FileReader fileReader) {
+            this.fileReader = fileReader;
             return this;
         }
 
         public DefaultServiceSpec build() throws Exception {
-            return YAMLToInternalMappers.convertServiceSpec(
-                    rawServiceSpec, schedulerConfig, taskEnvRouter, configTemplateReader);
+            return YAMLToInternalMappers.convertServiceSpec(rawServiceSpec, schedulerFlags, taskEnvRouter, fileReader);
         }
     }
 
 
     /**
-     * {@link DefaultServiceSpec} builder static inner class.
+     * {@code DefaultServiceSpec} builder static inner class.
      */
     public static final class Builder {
         private String name;

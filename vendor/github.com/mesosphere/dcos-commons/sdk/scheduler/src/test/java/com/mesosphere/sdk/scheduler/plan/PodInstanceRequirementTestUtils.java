@@ -21,10 +21,6 @@ public class PodInstanceRequirementTestUtils {
         return getCpuRequirement(value, 0);
     }
 
-    public static PodInstanceRequirement getCpuRequirement(double value, String preReservedRole) {
-        return getRequirement(getCpuResourceSet(value, preReservedRole), 0);
-    }
-
     public static PodInstanceRequirement getCpuRequirement(double value, int index) {
         return getRequirement(getCpuResourceSet(value), index);
     }
@@ -63,11 +59,7 @@ public class PodInstanceRequirementTestUtils {
     }
 
     public static ResourceSet getCpuResourceSet(double value) {
-        return getCpuResourceSet(value, Constants.ANY_ROLE);
-    }
-
-    public static ResourceSet getCpuResourceSet(double value, String preReservedRole) {
-        return DefaultResourceSet.newBuilder(TestConstants.ROLE, preReservedRole, TestConstants.PRINCIPAL)
+        return DefaultResourceSet.newBuilder(TestConstants.ROLE, Constants.ANY_ROLE, TestConstants.PRINCIPAL)
                 .id(TestConstants.RESOURCE_SET_ID)
                 .cpus(value)
                 .build();

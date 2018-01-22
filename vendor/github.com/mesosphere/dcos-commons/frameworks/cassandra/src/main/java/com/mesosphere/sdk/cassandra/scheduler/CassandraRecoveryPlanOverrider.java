@@ -101,6 +101,7 @@ public class CassandraRecoveryPlanOverrider implements RecoveryPlanOverrider {
 
         Step replaceStep = new DefaultRecoveryStep(
                 inputLaunchStep.getName(),
+                Status.PENDING,
                 replacePodInstanceRequirement,
                 new UnconstrainedLaunchConstrainer(),
                 stateStore);
@@ -127,6 +128,7 @@ public class CassandraRecoveryPlanOverrider implements RecoveryPlanOverrider {
 
                         return new DefaultRecoveryStep(
                                 step.getName(),
+                                Status.PENDING,
                                 restartPodInstanceRequirement,
                                 new UnconstrainedLaunchConstrainer(),
                                 stateStore);

@@ -13,9 +13,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 import com.google.common.base.Splitter;
+import com.mesosphere.sdk.api.EndpointUtils;
+import com.mesosphere.sdk.api.EndpointUtils.VipInfo;
 import com.mesosphere.sdk.dcos.DcosConstants;
-import com.mesosphere.sdk.http.EndpointUtils;
-import com.mesosphere.sdk.http.EndpointUtils.VipInfo;
 import com.mesosphere.sdk.specification.NamedVIPSpec;
 
 /**
@@ -133,11 +133,11 @@ public class AuxLabelAccess {
     }
 
     /**
-     * Returns a copy of the provided {@link Protos.Labels} instance with the provided label added to the list.
+     * Returns a copy of the provided {@link Labels} instance with the provided label added to the list.
      * If the provided label key already exists, it is updated with the new value.
      *
-     * This should only be used for custom label locations. If you're editing {@link Protos.TaskInfo} labels you should
-     * use {@code TaskLabelWriter}.
+     * This should only be used for custom label locations. If you're editing {@link TaskInfo} labels you should use
+     * {@code TaskLabelWriter}.
      */
     private static Protos.Labels withLabel(Protos.Labels labels, String key, String value) {
         Map<String, String> map = LabelUtils.toMap(labels);

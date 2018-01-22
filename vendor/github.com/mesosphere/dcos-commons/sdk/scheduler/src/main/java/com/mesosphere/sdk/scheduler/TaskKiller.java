@@ -1,31 +1,25 @@
 package com.mesosphere.sdk.scheduler;
 
 import org.apache.mesos.Protos.TaskID;
-import org.apache.mesos.SchedulerDriver;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+
+import com.mesosphere.sdk.scheduler.recovery.RecoveryType;
 
 /**
- * This class is a default implementation of the TaskKiller interface.
+ * This interface should be implemented to allow components to request the killing of Mesos Tasks.  This is a normal
+ * part of restarting a Task, which is a normal part of updating the Configuration of a Task.  This is also useful for
+ * allowing end-users to mitigate problems with Tasks when they manually determine that a Task should be restarted or
+ * permanently replaced.
  */
-public class TaskKiller {
-    private final Logger logger = LoggerFactory.getLogger(getClass());
-    private final SchedulerDriver driver;
+public interface TaskKiller {
 
-    public TaskKiller(SchedulerDriver driver) {
-        this.driver = driver;
-    }
-
-    public void killTask(TaskID taskId) {
-        // In order to update a podinstance its normal to kill all tasks in a pod.
-        // Sometimes a task hasn't been launched ever but it has been recorded for
-        // resource reservation footprint reasons, and therefore doesn't have a TaskID yet.
-        if (taskId.getValue().isEmpty()) {
-            logger.warn("Attempted to kill empty TaskID.");
-            return;
-        }
-
-        logger.info("Killing task: {}", taskId.getValue());
-        driver.killTask(taskId);
-    }
+    /**
+     * This method should accept Tasks which the caller wishes to kill.  The kill may be destructive (for restarting at
+     * a new location) or it may be killed with the intention of later being restarted (for in-place restart).  This
+     * method does not synchronously kill the Task.  Mesos will periodically provide a SchedulerDriver which may be used
+     * to process requested Task kills.
+     *
+     * @param taskId ID of the task to be restarted
+     * @param recoveryType A flag indicating the type of kill to perform, {@code TRANSIENT} or {@code PERMANENT}
+     */
+    void killTask(TaskID taskId, RecoveryType recoveryType);
 }

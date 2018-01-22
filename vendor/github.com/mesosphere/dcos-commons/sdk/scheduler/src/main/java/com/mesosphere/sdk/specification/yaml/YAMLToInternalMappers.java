@@ -12,9 +12,10 @@ import com.mesosphere.sdk.offer.Constants;
 import com.mesosphere.sdk.offer.evaluate.placement.MarathonConstraintParser;
 import com.mesosphere.sdk.offer.evaluate.placement.PassthroughRule;
 import com.mesosphere.sdk.offer.evaluate.placement.PlacementRule;
-import com.mesosphere.sdk.scheduler.SchedulerConfig;
+import com.mesosphere.sdk.scheduler.SchedulerFlags;
 import com.mesosphere.sdk.scheduler.SchedulerUtils;
 import com.mesosphere.sdk.specification.*;
+import com.mesosphere.sdk.specification.util.RLimit;
 import org.apache.mesos.Protos;
 
 import java.io.File;
@@ -35,15 +36,9 @@ public class YAMLToInternalMappers {
      * Implementation for reading files from disk. Meant to be overridden by a mock in tests.
      */
     @VisibleForTesting
-    public static class ConfigTemplateReader {
-        private final File templateDir;
-
-        public ConfigTemplateReader(File templateDir) {
-            this.templateDir = templateDir;
-        }
-
-        public String read(String templateFileName) throws IOException {
-            return FileUtils.readFileToString(new File(templateDir, templateFileName), StandardCharsets.UTF_8);
+    public static class FileReader {
+        public String read(String path) throws IOException {
+            return FileUtils.readFileToString(new File(path), StandardCharsets.UTF_8);
         }
     }
 
@@ -51,14 +46,14 @@ public class YAMLToInternalMappers {
      * Converts the provided YAML {@link RawServiceSpec} into a new {@link ServiceSpec}.
      *
      * @param rawServiceSpec the raw service specification representing a YAML file
-     * @param configTemplateReader the file reader to be used for reading template files, allowing overrides for testing
+     * @param fileReader the file reader to be used for reading template files, allowing overrides for testing
      * @throws Exception if the conversion fails
      */
     public static DefaultServiceSpec convertServiceSpec(
             RawServiceSpec rawServiceSpec,
-            SchedulerConfig schedulerConfig,
+            SchedulerFlags schedulerFlags,
             TaskEnvRouter taskEnvRouter,
-            ConfigTemplateReader configTemplateReader) throws Exception {
+            FileReader fileReader) throws Exception {
         verifyDistinctDiscoveryPrefixes(rawServiceSpec.getPods().values());
         verifyDistinctEndpointNames(rawServiceSpec.getPods().values());
 
@@ -70,7 +65,7 @@ public class YAMLToInternalMappers {
                 .name(SchedulerUtils.getServiceName(rawServiceSpec))
                 .role(role)
                 .principal(principal)
-                .zookeeperConnection(SchedulerUtils.getZkHost(rawServiceSpec, schedulerConfig))
+                .zookeeperConnection(SchedulerUtils.getZkHost(rawServiceSpec, schedulerFlags))
                 .webUrl(rawServiceSpec.getWebUrl())
                 .user(user);
 
@@ -82,12 +77,12 @@ public class YAMLToInternalMappers {
             RawPod rawPod = entry.getValue();
             pods.add(convertPod(
                     rawPod,
-                    configTemplateReader,
+                    fileReader,
                     podName,
                     taskEnvRouter.getConfig(podName),
                     getRole(rawPod.getPreReservedRole(), role),
                     principal,
-                    schedulerConfig.getExecutorURI(),
+                    schedulerFlags.getExecutorURI(),
                     user));
 
         }
@@ -182,7 +177,7 @@ public class YAMLToInternalMappers {
 
     private static PodSpec convertPod(
             RawPod rawPod,
-            ConfigTemplateReader configTemplateReader,
+            FileReader fileReader,
             String podName,
             Map<String, String> additionalEnv,
             String role,
@@ -194,33 +189,47 @@ public class YAMLToInternalMappers {
                 .type(podName)
                 .user(user)
                 .preReservedRole(rawPod.getPreReservedRole())
-                .sharePidNamespace(rawPod.getSharePidNamespace())
-                .allowDecommission(rawPod.getAllowDecommission());
+                .sharePidNamespace(rawPod.getSharePidNamespace());
 
+        // ContainerInfo parsing section: we allow Networks and RLimits to be within RawContainer, but new
+        // functionality (CNI or otherwise) will land in the pod-level only.
+        RawContainerInfoProvider containerInfoProvider = null;
         List<String> networkNames = new ArrayList<>();
-        List<RLimitSpec> rlimits = new ArrayList<>();
-        for (Map.Entry<String, RawRLimit> entry : rawPod.getRLimits().entrySet()) {
-            RawRLimit rawRLimit = entry.getValue();
-            rlimits.add(new RLimitSpec(entry.getKey(), rawRLimit.getSoft(), rawRLimit.getHard()));
+        if (rawPod.getImage() != null || !rawPod.getNetworks().isEmpty() || !rawPod.getRLimits().isEmpty()) {
+            if (rawPod.getContainer() != null) {
+                throw new IllegalArgumentException(String.format("You may define container settings directly under the "
+                        + "pod %s or under %s:container, but not both.", podName, podName));
+            }
+            containerInfoProvider = rawPod;
+        } else if (rawPod.getContainer() != null) {
+            containerInfoProvider = rawPod.getContainer();
         }
 
-        WriteOnceLinkedHashMap<String, RawNetwork> rawNetworks = rawPod.getNetworks();
-        final Collection<NetworkSpec> networks = new ArrayList<>();
-        if (MapUtils.isNotEmpty(rawNetworks)) {
-            networks.addAll(rawNetworks.entrySet().stream()
-                    .map(rawNetworkEntry -> {
-                        String networkName = rawNetworkEntry.getKey();
-                        DcosConstants.warnIfUnsupportedNetwork(networkName);
-                        networkNames.add(networkName);
-                        RawNetwork rawNetwork = rawNetworks.get(networkName);
-                        return convertNetwork(networkName, rawNetwork, collatePorts(rawPod));
-                    })
-                    .collect(Collectors.toList()));
-        }
+        if (containerInfoProvider != null) {
+            List<RLimit> rlimits = new ArrayList<>();
+            for (Map.Entry<String, RawRLimit> entry : containerInfoProvider.getRLimits().entrySet()) {
+                RawRLimit rawRLimit = entry.getValue();
+                rlimits.add(new RLimit(entry.getKey(), rawRLimit.getSoft(), rawRLimit.getHard()));
+            }
 
-        builder.image(rawPod.getImage())
-                .networks(networks)
-                .rlimits(rlimits);
+            WriteOnceLinkedHashMap<String, RawNetwork> rawNetworks = containerInfoProvider.getNetworks();
+            final Collection<NetworkSpec> networks = new ArrayList<>();
+            if (MapUtils.isNotEmpty(rawNetworks)) {
+                networks.addAll(rawNetworks.entrySet().stream()
+                        .map(rawNetworkEntry -> {
+                            String networkName = rawNetworkEntry.getKey();
+                            DcosConstants.warnIfUnsupportedNetwork(networkName);
+                            networkNames.add(networkName);
+                            RawNetwork rawNetwork = rawNetworks.get(networkName);
+                            return convertNetwork(networkName, rawNetwork, collatePorts(rawPod));
+                        })
+                        .collect(Collectors.toList()));
+            }
+
+            builder.image(containerInfoProvider.getImage())
+                    .networks(networks)
+                    .rlimits(rlimits);
+        }
 
         // Collect the resourceSets (if given)
         final Collection<ResourceSet> resourceSets = new ArrayList<>();
@@ -272,7 +281,7 @@ public class YAMLToInternalMappers {
         for (Map.Entry<String, RawTask> entry : rawPod.getTasks().entrySet()) {
             taskSpecs.add(convertTask(
                     entry.getValue(),
-                    configTemplateReader,
+                    fileReader,
                     entry.getKey(),
                     additionalEnv,
                     resourceSets,
@@ -299,14 +308,14 @@ public class YAMLToInternalMappers {
 
     private static TaskSpec convertTask(
             RawTask rawTask,
-            ConfigTemplateReader configTemplateReader,
+            FileReader fileReader,
             String taskName,
             Map<String, String> additionalEnv,
             Collection<ResourceSet> resourceSets,
             String role,
             String preReservedRole,
             String principal,
-            Collection<String> networkNames) throws IOException {
+            Collection<String> networkNames) throws Exception {
 
         DefaultCommandSpec.Builder commandSpecBuilder = DefaultCommandSpec.newBuilder(additionalEnv)
                 .environment(rawTask.getEnv())
@@ -318,7 +327,7 @@ public class YAMLToInternalMappers {
                 configFiles.add(new DefaultConfigFileSpec(
                         configEntry.getKey(),
                         configEntry.getValue().getDest(),
-                        configTemplateReader.read(configEntry.getValue().getTemplate())));
+                        fileReader.read(configEntry.getValue().getTemplate())));
             }
         }
 
@@ -359,7 +368,6 @@ public class YAMLToInternalMappers {
                 .configFiles(configFiles)
                 .discoverySpec(discoverySpec)
                 .goalState(GoalState.valueOf(StringUtils.upperCase(rawTask.getGoal())))
-                .essential(rawTask.isEssential())
                 .healthCheckSpec(healthCheckSpec)
                 .readinessCheckSpec(readinessCheckSpec)
                 .name(taskName)

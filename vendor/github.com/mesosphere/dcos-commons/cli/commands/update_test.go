@@ -6,7 +6,6 @@ import (
 	"io/ioutil"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"testing"
 
 	"github.com/mesosphere/dcos-commons/cli/client"
@@ -64,10 +63,7 @@ func (suite *UpdateTestSuite) SetupSuite() {
 func (suite *UpdateTestSuite) SetupTest() {
 	// set up test server
 	suite.server = httptest.NewServer(http.HandlerFunc(suite.exampleHandler))
-	os.Setenv("DCOS_URL", suite.server.URL)
-	os.Setenv("DCOS_PACKAGE_COSMOS_URL", suite.server.URL)
-	os.Setenv("DCOS_ACS_TOKEN", "fake-token")
-	os.Setenv("DCOS_SSL_VERIFY", "False")
+	config.DcosURL = suite.server.URL
 }
 
 func (suite *UpdateTestSuite) TearDownTest() {
@@ -75,7 +71,6 @@ func (suite *UpdateTestSuite) TearDownTest() {
 	suite.server.Close()
 	suite.responseStatus = 0
 }
-
 func TestUpdateTestSuite(t *testing.T) {
 	suite.Run(t, new(UpdateTestSuite))
 }
@@ -88,65 +83,32 @@ func (suite *UpdateTestSuite) TestDescribe() {
 	if err != nil {
 		suite.T().Fatal(err)
 	}
-	assert.Equal(suite.T(), "hello-world", requestBody["appId"].(string))
+	assert.Equal(suite.T(), config.ServiceName, requestBody["appId"].(string))
 	// assert that printed output is the resolvedOptions field from the JSON
-	expectedOutput := `{
-  "hello": {
-    "count": 1,
-    "cpus": 0.1,
-    "disk": 25,
-    "gpus": 1,
-    "mem": 252,
-    "placement": "hostname:UNIQUE"
-  },
-  "service": {
-    "mesos_api_version": "V1",
-    "name": "hello-world",
-    "service_account": "",
-    "service_account_secret": "",
-    "sleep": 1000,
-    "spec_file": "svc.yml",
-    "user": "root"
-  },
-  "world": {
-    "count": 2,
-    "cpus": 0.2,
-    "disk": 50,
-    "mem": 512,
-    "placement": "hostname:UNIQUE"
-  }
-}
-`
+	expectedOutput := suite.loadFile("testdata/output/describe.txt")
 	assert.JSONEq(suite.T(), string(expectedOutput), suite.capturedOutput.String())
 }
 
 func (suite *UpdateTestSuite) TestDescribeNoOptions() {
+	config.Command = "describe"
 	suite.responseBody = suite.loadFile("testdata/responses/cosmos/1.10/open/describe.json")
 	describe()
 	// assert that user receives an error message
-	expectedOutput := `Package configuration is not available for service hello-world.
-This command is only available for packages installed with Enterprise DC/OS 1.10 or newer.
-`
+	expectedOutput := suite.loadFile("testdata/output/no-stored-options.txt")
 	assert.Equal(suite.T(), string(expectedOutput), suite.capturedOutput.String())
 }
 
 func (suite *UpdateTestSuite) TestUpdatePackageVersions() {
 	suite.responseBody = suite.loadFile("testdata/responses/cosmos/1.10/enterprise/describe.json")
 	printPackageVersions()
-	expectedOutput := `Current package version is: "v1.0"
-Package can be downgraded to: ["v0.8", "v0.9"]
-Package can be upgraded to: ["v1.1", "v2.0"]
-`
+	expectedOutput := suite.loadFile("testdata/output/package-versions.txt")
 	assert.Equal(suite.T(), string(expectedOutput), suite.capturedOutput.String())
 }
 
 func (suite *UpdateTestSuite) TestUpdatePackageVersionsNoPackageVersions() {
 	suite.responseBody = suite.loadFile("testdata/responses/cosmos/1.10/enterprise/describe-no-package-versions.json")
 	printPackageVersions()
-	expectedOutput := `Current package version is: "v1.0"
-No valid package downgrade versions.
-No valid package upgrade versions.
-`
+	expectedOutput := suite.loadFile("testdata/output/no-package-versions.txt")
 	assert.Equal(suite.T(), string(expectedOutput), suite.capturedOutput.String())
 }
 
@@ -218,4 +180,104 @@ func (suite *UpdateTestSuite) TestUpdateWithMalformedFile() {
 	doUpdate("testdata/input/malformed.json", "", false)
 	expectedOutput := fmt.Sprintf("Failed to parse JSON in specified options file testdata/input/malformed.json: unexpected end of JSON input\nContent (340 bytes): %s\n", suite.loadFile("testdata/input/malformed.json"))
 	assert.Equal(suite.T(), string(expectedOutput), suite.capturedOutput.String())
+}
+
+func (suite *UpdateTestSuite) TestUdateWithInvalidMinumum() {
+	responseJSON := `{
+    "type": "JsonSchemaMismatch",
+    "message": "Options JSON failed validation",
+    "data": {
+        "errors": [
+            {
+                "level": "error",
+                "schema": {
+                    "loadingURI": "#",
+                    "pointer": "/properties/nodes/properties/count"
+                },
+                "instance": {
+                    "pointer": "/nodes/count"
+                },
+                "domain": "validation",
+                "keyword": "minimum",
+                "message": "numeric instance is lower than the required minimum (minimum: 3, found: 2)",
+                "minimum": 3,
+                "found": 2
+            }
+        ]
+    }
+}`
+	suite.responseBody = []byte(responseJSON)
+	suite.responseStatus = http.StatusBadRequest
+
+	doUpdate("testdata/input/config.json", "stub-universe", false)
+
+	// assert CLI output is what we expect
+	expectedOutput := "Unable to update hello-world to requested configuration: options JSON failed validation.\n" +
+		"\n" +
+		"Field        Error \n" +
+		"-----        ----- \n" +
+		"/nodes/count numeric instance is lower than the required minimum (minimum: 3, found: 2)\n"
+
+	assert.Equal(suite.T(), string(expectedOutput), suite.capturedOutput.String())
+}
+
+func (suite *UpdateTestSuite) TestUpdateWithTwoValidationErrors() {
+	responseJSON := `{
+    "type": "JsonSchemaMismatch",
+    "message": "Options JSON failed validation",
+    "data": {
+        "errors": [
+            {
+                "level": "error",
+                "schema": {
+                    "loadingURI": "#",
+                    "pointer": "/properties/nodes/properties/count"
+                },
+                "instance": {
+                    "pointer": "/nodes/count"
+                },
+                "domain": "validation",
+                "keyword": "minimum",
+                "message": "numeric instance is lower than the required minimum (minimum: 3, found: 2)",
+                "minimum": 3,
+                "found": 2
+            },
+            {
+                "level": "error",
+                "schema": {
+                    "loadingURI": "#",
+                    "pointer": "/properties/nodes/properties/cpus"
+                },
+                "instance": {
+                    "pointer": "/nodes/cpus"
+                },
+                "domain": "validation",
+                "keyword": "type",
+                "message": "instance type (string) does not match any allowed primitive type (allowed: [\"integer\",\"number\"])",
+                "found": "string",
+                "expected": [
+                    "integer",
+                    "number"
+                ]
+            }
+        ]
+    }
+}
+`
+
+	suite.responseBody = []byte(responseJSON)
+	suite.responseStatus = http.StatusBadRequest
+
+	doUpdate("testdata/input/config.json", "stub-universe", false)
+
+	// assert CLI output is what we expect
+	expectedOutput := "Unable to update hello-world to requested configuration: options JSON failed validation.\n" +
+		"\n" +
+		"Field        Error                                                                      \n" +
+		"-----        -----                                                                      \n" +
+		"/nodes/count numeric instance is lower than the required minimum (minimum: 3, found: 2) \n" +
+		"/nodes/cpus  instance type (string) does not match any allowed primitive type (allowed: [\"integer\",\"number\"])\n"
+
+	assert.Equal(suite.T(), string(expectedOutput), suite.capturedOutput.String())
+
 }

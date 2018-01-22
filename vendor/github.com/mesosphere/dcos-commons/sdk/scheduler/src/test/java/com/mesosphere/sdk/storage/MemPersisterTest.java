@@ -8,9 +8,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 import java.util.TreeSet;
 
 import org.apache.curator.test.TestingServer;
@@ -32,12 +30,7 @@ import com.mesosphere.sdk.testutils.TestConstants;
 public class MemPersisterTest {
     private static final String KEY = "key";
     private static final byte[] VAL = "someval".getBytes(StandardCharsets.UTF_8);
-    private static final String KEY2 = "key2";
     private static final byte[] VAL2 = "someval2".getBytes(StandardCharsets.UTF_8);
-
-    private static final Collection<String> KEY_SET = new TreeSet<>(Arrays.asList("/" + KEY));
-    private static final Collection<String> KEY2_SET = new TreeSet<>(Arrays.asList("/" + KEY2));
-    private static final Collection<String> BOTH_KEYS_SET = new TreeSet<>(Arrays.asList("/" + KEY, "/" + KEY2));
 
     @Mock private ServiceSpec mockServiceSpec;
     private static TestingServer testZk;
@@ -85,7 +78,7 @@ public class MemPersisterTest {
 
     @Test(expected = PersisterException.class)
     public void testDeleteMissing() throws PersisterException {
-        persister.recursiveDelete(KEY);
+        persister.deleteAll(KEY);
     }
 
     @Test
@@ -152,19 +145,19 @@ public class MemPersisterTest {
         persister.set("/c", VAL);
         persister.set("/d/1/a/1", VAL);
 
-        persister.recursiveDelete("/a/1");
+        persister.deleteAll("/a/1");
         checkChildren(Arrays.asList("2", "3"), persister, "a");
-        persister.recursiveDelete("/a/3/a");
+        persister.deleteAll("/a/3/a");
         checkChildren(Arrays.asList("2", "3"), persister, "a");
-        persister.recursiveDelete("/b");
+        persister.deleteAll("/b");
         checkChildren(Arrays.asList("a", "c", "d"), persister, "");
-        persister.recursiveDelete("/c");
+        persister.deleteAll("/c");
         checkChildren(Arrays.asList("a", "d"), persister, "");
-        persister.recursiveDelete("/d/1");
+        persister.deleteAll("/d/1");
         checkChildren(Arrays.asList("a", "d"), persister, "");
-        persister.recursiveDelete("/a");
+        persister.deleteAll("/a");
         checkChildren(Arrays.asList("d"), persister, "");
-        persister.recursiveDelete("/d");
+        persister.deleteAll("/d");
         checkChildren(Collections.emptyList(), persister, "");
     }
 
@@ -191,97 +184,12 @@ public class MemPersisterTest {
         persister.set("/c", VAL);
         persister.set("/d/1/a/1", VAL);
 
-        persister.recursiveDelete(rootPathToDelete);
+        persister.deleteAll(rootPathToDelete);
 
         byte[] dat = persister.get("");
         String desc = dat == null ? "NULL" : String.format("%d bytes", dat.length);
         assertEquals(desc, null, dat);
         assertTrue(persister.getChildren("").isEmpty());
-    }
-
-    @Test
-    public void testSetGetDelete() throws PersisterException {
-        persister.set(KEY, VAL);
-        assertArrayEquals(VAL, persister.get(KEY));
-        assertEquals(KEY_SET, PersisterUtils.getAllKeys(persister));
-
-        persister.set(KEY2, VAL2);
-        assertArrayEquals(VAL2, persister.get(KEY2));
-        assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(persister));
-
-        persister.recursiveDelete(KEY);
-        try {
-            persister.get(KEY);
-            fail("Expected exception");
-        } catch (Exception e) {
-            // expected, continue testing
-        }
-        assertEquals(KEY2_SET, PersisterUtils.getAllKeys(persister));
-
-        persister.recursiveDelete(KEY2);
-        try {
-            persister.get(KEY2);
-            fail("Expected exception");
-        } catch (Exception e) {
-            // expected, continue testing
-        }
-        assertTrue(PersisterUtils.getAllKeys(persister).isEmpty());
-    }
-
-    @Test
-    public void testSetManyGetManyDeleteMany() throws PersisterException {
-        Map<String, byte[]> map = persister.getMany(Arrays.asList(KEY, KEY2));
-        assertEquals(2, map.size());
-        assertArrayEquals(null, map.get(KEY));
-        assertArrayEquals(null, map.get(KEY2));
-
-        map = new HashMap<>();
-        map.put(KEY, VAL);
-        persister.setMany(map);
-
-        map = persister.getMany(Arrays.asList(KEY));
-        assertEquals(1, map.size());
-        assertArrayEquals(VAL, map.get(KEY));
-        assertEquals(KEY_SET, PersisterUtils.getAllKeys(persister));
-
-        map.put(KEY, VAL2); // overwrite prior value
-        map.put(KEY2, VAL2);
-        persister.setMany(map);
-
-        assertArrayEquals(VAL2, persister.get(KEY));
-        assertArrayEquals(VAL2, persister.get(KEY2));
-        map = persister.getMany(Arrays.asList(KEY, KEY2));
-        assertEquals(2, map.size());
-        assertArrayEquals(VAL2, map.get(KEY));
-        assertArrayEquals(VAL2, map.get(KEY2));
-        assertEquals(BOTH_KEYS_SET, PersisterUtils.getAllKeys(persister));
-
-        persister.recursiveDeleteMany(Arrays.asList(KEY, KEY2));
-
-        map = persister.getMany(Arrays.asList(KEY, KEY2));
-        assertEquals(2, map.size());
-        assertArrayEquals(null, map.get(KEY));
-        assertArrayEquals(null, map.get(KEY2));
-        assertTrue(PersisterUtils.getAllKeys(persister).isEmpty());
-
-        map.remove(KEY2);
-        map.put(KEY, VAL);
-        persister.setMany(map);
-
-        assertArrayEquals(VAL, persister.get(KEY));
-        map = persister.getMany(Arrays.asList(KEY, KEY2));
-        assertEquals(2, map.size());
-        assertArrayEquals(VAL, map.get(KEY));
-        assertArrayEquals(null, map.get(KEY2));
-        assertEquals(KEY_SET, PersisterUtils.getAllKeys(persister));
-
-        persister.recursiveDeleteMany(Arrays.asList(KEY, KEY2));
-
-        map = persister.getMany(Arrays.asList(KEY, KEY2));
-        assertEquals(2, map.size());
-        assertArrayEquals(null, map.get(KEY));
-        assertArrayEquals(null, map.get(KEY2));
-        assertTrue(PersisterUtils.getAllKeys(persister).isEmpty());
     }
 
     @Test
@@ -299,8 +207,8 @@ public class MemPersisterTest {
                             persister.set(key, VAL2);
                             assertArrayEquals(VAL2, persister.get(key));
                             persister.setMany(Collections.singletonMap(key, VAL));
-                            assertArrayEquals(VAL, persister.getMany(Arrays.asList(key)).get(key));
-                            persister.recursiveDelete(key);
+                            assertArrayEquals(VAL, persister.get(key));
+                            persister.deleteAll(key);
                             try {
                                 persister.get(key);
                                 fail("Expected exception");

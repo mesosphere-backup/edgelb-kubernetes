@@ -35,7 +35,8 @@ public class DefaultPlanManagerTest {
         firstStep = new TestStep("step-0", podInstance0);
         secondStep = new TestStep("step-1", podInstance1);
         plan = getTestPlan(firstStep, secondStep);
-        planManager = DefaultPlanManager.createProceeding(plan);
+        planManager = new DefaultPlanManager(plan);
+        planManager.getPlan().proceed();
     }
 
     @Test
@@ -66,7 +67,7 @@ public class DefaultPlanManagerTest {
 
     @Test
     public void testEmptyStageStatus() {
-        PlanManager emptyManager = DefaultPlanManager.createInterrupted(getEmptyPlan());
+        PlanManager emptyManager = new DefaultPlanManager(getEmptyPlan());
         Assert.assertEquals(Status.COMPLETE, emptyManager.getPlan().getStatus());
     }
 
@@ -230,7 +231,7 @@ public class DefaultPlanManagerTest {
         step1.setStatus(Status.PREPARED);
         step2.setStatus(Status.PREPARED);
 
-        PlanManager waitingManager = DefaultPlanManager.createInterrupted(waitingPlan);
+        PlanManager waitingManager = new DefaultPlanManager(waitingPlan);
         Assert.assertEquals(Status.WAITING, waitingManager.getPlan().getStatus());
         waitingManager.getPlan().proceed();
         Assert.assertEquals(Status.IN_PROGRESS, waitingManager.getPlan().getStatus());
@@ -261,7 +262,7 @@ public class DefaultPlanManagerTest {
         step1.setStatus(Status.PENDING);
         step2.setStatus(Status.PREPARED);
 
-        PlanManager waitingManager = DefaultPlanManager.createInterrupted(waitingPlan);
+        PlanManager waitingManager = new DefaultPlanManager(waitingPlan);
         Assert.assertEquals(Status.WAITING, waitingManager.getPlan().getStatus());
         waitingPlan.proceed();
         Assert.assertEquals(Status.IN_PROGRESS, waitingManager.getPlan().getStatus());
@@ -291,7 +292,7 @@ public class DefaultPlanManagerTest {
         step1.setStatus(Status.COMPLETE);
         step2.setStatus(Status.PREPARED);
 
-        PlanManager waitingManager = DefaultPlanManager.createInterrupted(waitingPlan);
+        PlanManager waitingManager = new DefaultPlanManager(waitingPlan);
 
         Assert.assertFalse(phase.isInterrupted());
         Assert.assertEquals(Status.WAITING, waitingManager.getPlan().getStatus());

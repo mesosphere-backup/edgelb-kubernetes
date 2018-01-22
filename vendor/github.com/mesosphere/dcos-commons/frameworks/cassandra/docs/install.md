@@ -1,10 +1,9 @@
 ---
-layout: layout.pug
-navigationTitle: 
-title: Installing and Customizing
-menuWeight: 20
-excerpt:
-
+post_title: Installing and Customizing
+nav_title: Installing and Customizing
+menu_order: 20
+post_excerpt: ""
+enterprise: 'no'
 ---
 
 The default DC/OS Apache Cassandra installation provides reasonable defaults for trying out the service, but may not be sufficient for production use. You may require different configurations depending on the context of the deployment.
@@ -21,12 +20,12 @@ The default DC/OS Apache Cassandra installation provides reasonable defaults for
 To start a basic test cluster, run the following command on the DC/OS CLI. Enterprise DC/OS users must follow additional instructions. [More information about installing DC/OS Apache Cassandra on Enterprise DC/OS](https://docs.mesosphere.com/1.9/security/service-auth/custom-service-auth/).
 
 ```shell
-dcos package install beta-cassandra
+dcos package install cassandra
 ```
 You can specify a custom configuration in an `options.json` file and pass it to `dcos package install` using the `--options` parameter.
 
 ```
-$ dcos package install beta-cassandra --options=<options>.json
+$ dcos package install cassandra --options=<options>.json
 ```
 
 It is recommended that this custom configuration is stored in source control.
@@ -37,7 +36,7 @@ For more information about building the `options.json` file, see the [DC/OS docu
 
 You can [install DC/OS Apache Cassandra from the DC/OS web interface](https://docs.mesosphere.com/1.9/usage/managing-services/install/). If you install DC/OS Apache Cassandra from the web interface, you must install the DC/OS Apache Cassandra CLI subcommands separately. From the DC/OS CLI, enter:
 ```bash
-dcos package install beta-cassandra --cli
+dcos package install cassandra --cli
 ```
 Choose `ADVANCED INSTALLATION` to perform a custom installation.
 
@@ -59,7 +58,7 @@ Steps:
    dcos:adminrouter:ops:mesos full
    dcos:adminrouter:ops:slave full
    ```
-1. Install your service into a folder called `test`. Go to **Catalog**, then search for **beta-cassandra**.
+1. Install your service into a folder called `test`. Go to **Catalog**, then search for **cassandra**.
 1. Click **CONFIGURE** and change the service name to `/testing/cassandra`, then deploy.
 
    The slashes in your service name are interpreted as folders. You are deploying Cassandra in the `/testing` folder. Any user with access to the `/testing` folder will have access to the service.
@@ -84,7 +83,7 @@ To replicate data across data centers, Apache Cassandra requires that you config
 Launch the first cluster with the default configuration:
 
 ```shell
-dcos package install beta-cassandra
+dcos package install cassandra
 ```
 
 Create an `options.json` file for the second cluster that specifies a different service name and data center name:
@@ -100,7 +99,7 @@ Create an `options.json` file for the second cluster that specifies a different 
 
 Launch the second cluster with these custom options:
 ```
-dcos package install beta-cassandra --options=<options>.json
+dcos package install cassandra --options=<options>.json
 ```
 
 ## Get the seed node IP addresses

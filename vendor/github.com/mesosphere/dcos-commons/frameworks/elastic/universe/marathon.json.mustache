@@ -1,10 +1,10 @@
 {
   "id": "{{service.name}}",
-  "cpus": 1.0,
-  "mem": 1024,
+  "cpus": 0.5,
+  "mem": 2048,
   "instances": 1,
-  "user": "{{service.user}}",
-  "cmd": "export LD_LIBRARY_PATH=$MESOS_SANDBOX/libmesos-bundle/lib:$LD_LIBRARY_PATH; export MESOS_NATIVE_JAVA_LIBRARY=$(ls $MESOS_SANDBOX/libmesos-bundle/lib/libmesos-*.so); export JAVA_HOME=$(ls -d $MESOS_SANDBOX/jre*/); export JAVA_HOME=${JAVA_HOME%/}; export PATH=$(ls -d $JAVA_HOME/bin):$PATH && export JAVA_OPTS=\"-Xms256M -Xmx512M -XX:-HeapDumpOnOutOfMemoryError\" && ./bootstrap -resolve=false -template=false && ./elastic-scheduler/bin/elastic ./elastic-scheduler/svc.yml",
+  "user":"{{service.user}}",
+  "cmd": "export LD_LIBRARY_PATH=$MESOS_SANDBOX/libmesos-bundle/lib:$LD_LIBRARY_PATH; export MESOS_NATIVE_JAVA_LIBRARY=$(ls $MESOS_SANDBOX/libmesos-bundle/lib/libmesos-*.so); export JAVA_HOME=$(ls -d $MESOS_SANDBOX/jre*/); export JAVA_HOME=${JAVA_HOME%/}; export PATH=$(ls -d $JAVA_HOME/bin):$PATH &&  export JAVA_OPTS=\"-Xms256M -Xmx1024M -XX:-HeapDumpOnOutOfMemoryError\" &&  ./elastic-scheduler/bin/elastic ./elastic-scheduler/svc.yml",
   "labels": {
     "DCOS_COMMONS_API_VERSION": "v1",
     "DCOS_COMMONS_UNINSTALL": "true",
@@ -22,10 +22,6 @@
   },
   {{/service.service_account_secret}}
   "env": {
-    "PACKAGE_NAME": "{{package-name}}",
-    "PACKAGE_VERSION": "{{package-version}}",
-    "PACKAGE_BUILD_TIME_EPOCH_MS": "{{package-build-time-epoch-ms}}",
-    "PACKAGE_BUILD_TIME_STR": "{{package-build-time-str}}",
     "ELASTIC_VERSION": "{{elastic-version}}",
     "STATSD_URI": "{{resource.assets.uris.statsd-plugin-zip}}",
     "ELASTICSEARCH_URI" : "{{resource.assets.uris.elasticsearch-tar-gz}}",
@@ -37,7 +33,6 @@
     "BOOTSTRAP_URI": "{{resource.assets.uris.bootstrap-zip}}",
     "JAVA_URI": "{{resource.assets.uris.jre-tar-gz}}",
     "LIBMESOS_URI": "{{resource.assets.uris.libmesos-bundle-tar-gz}}",
-    "MESOS_API_VERSION": "{{service.mesos_api_version}}",
     "FRAMEWORK_NAME": "{{service.name}}",
     "FRAMEWORK_USER": "{{service.user}}",
     "FRAMEWORK_PRINCIPAL": "{{service.service_account}}",
@@ -45,9 +40,8 @@
 
     {{#service.service_account_secret}}
     "DCOS_SERVICE_ACCOUNT_CREDENTIAL": { "secret": "serviceCredential" },
-    "MESOS_MODULES": "{\"libraries\":[{\"file\":\"libmesos-bundle\/lib\/mesos\/libdcos_security.so\",\"modules\":[{\"name\": \"com_mesosphere_dcos_ClassicRPCAuthenticatee\"},{\"name\":\"com_mesosphere_dcos_http_Authenticatee\",\"parameters\":[{\"key\":\"jwt_exp_timeout\",\"value\":\"5mins\"},{\"key\":\"preemptive_refresh_duration\",\"value\":\"30mins\"}]}]}]}",
+    "MESOS_MODULES": "{\"libraries\": [{\"file\": \"libdcos_security.so\", \"modules\": [{\"name\": \"com_mesosphere_dcos_ClassicRPCAuthenticatee\"}]}]}",
     "MESOS_AUTHENTICATEE": "com_mesosphere_dcos_ClassicRPCAuthenticatee",
-    "MESOS_HTTP_AUTHENTICATEE": "com_mesosphere_dcos_http_Authenticatee",
     {{/service.service_account_secret}}
 
     {{#service.virtual_network_enabled}}
@@ -56,44 +50,7 @@
     "VIRTUAL_NETWORK_PLUGIN_LABELS": "{{service.virtual_network_plugin_labels}}",
     {{/service.virtual_network_enabled}}
 
-    {{#service.security.transport_encryption.enabled}}
-    "TASKCFG_ALL_SECURITY_TRANSPORT_ENCRYPTION_ENABLED": "{{service.security.transport_encryption.enabled}}",
-    "ELASTICSEARCH_HEALTH_PROTOCOL": "https",
-    {{/service.security.transport_encryption.enabled}}
-    {{^service.security.transport_encryption.enabled}}
-    "ELASTICSEARCH_HEALTH_PROTOCOL": "http",
-    {{/service.security.transport_encryption.enabled}}
-
     "DEPLOY_STRATEGY": "{{service.deploy_strategy}}",
-    "UPDATE_STRATEGY": "{{service.update_strategy}}",
-    "MASTER_NODE_CPUS": "{{master_nodes.cpus}}",
-    "MASTER_NODE_MEM": "{{master_nodes.mem}}",
-    "MASTER_NODE_PLACEMENT": "{{{master_nodes.placement}}}",
-    "MASTER_NODE_HEAP_MB": "{{master_nodes.heap.size}}",
-    "MASTER_NODE_DISK": "{{master_nodes.disk}}",
-    "MASTER_NODE_DISK_TYPE": "{{master_nodes.disk_type}}",
-    "MASTER_NODE_TRANSPORT_PORT": "{{master_nodes.transport_port}}",
-    "DATA_NODE_COUNT": "{{data_nodes.count}}",
-    "DATA_NODE_CPUS": "{{data_nodes.cpus}}",
-    "DATA_NODE_MEM": "{{data_nodes.mem}}",
-    "DATA_NODE_PLACEMENT": "{{{data_nodes.placement}}}",
-    "DATA_NODE_HEAP_MB": "{{data_nodes.heap.size}}",
-    "DATA_NODE_DISK": "{{data_nodes.disk}}",
-    "DATA_NODE_DISK_TYPE": "{{data_nodes.disk_type}}",
-    "INGEST_NODE_COUNT": "{{ingest_nodes.count}}",
-    "INGEST_NODE_CPUS": "{{ingest_nodes.cpus}}",
-    "INGEST_NODE_MEM": "{{ingest_nodes.mem}}",
-    "INGEST_NODE_PLACEMENT": "{{{ingest_nodes.placement}}}",
-    "INGEST_NODE_HEAP_MB": "{{ingest_nodes.heap.size}}",
-    "INGEST_NODE_DISK": "{{ingest_nodes.disk}}",
-    "INGEST_NODE_DISK_TYPE": "{{ingest_nodes.disk_type}}",
-    "COORDINATOR_NODE_COUNT": "{{coordinator_nodes.count}}",
-    "COORDINATOR_NODE_CPUS": "{{coordinator_nodes.cpus}}",
-    "COORDINATOR_NODE_MEM": "{{coordinator_nodes.mem}}",
-    "COORDINATOR_NODE_PLACEMENT": "{{{coordinator_nodes.placement}}}",
-    "COORDINATOR_NODE_HEAP_MB": "{{coordinator_nodes.heap.size}}",
-    "COORDINATOR_NODE_DISK": "{{coordinator_nodes.disk}}",
-    "COORDINATOR_NODE_DISK_TYPE": "{{coordinator_nodes.disk_type}}",
     "TASKCFG_ALL_XPACK_ENABLED": "{{elasticsearch.xpack_enabled}}",
     "ELASTICSEARCH_HEALTH_USER": "{{elasticsearch.health_user}}",
     "ELASTICSEARCH_HEALTH_USER_PASSWORD": "{{elasticsearch.health_user_password}}",
@@ -117,7 +74,7 @@
     {{#elasticsearch.network_tcp_receive_buffer_size}}
     "TASKCFG_ALL_NETWORK_TCP_RECEIVE_BUFFER_SIZE": "{{elasticsearch.network_tcp_receive_buffer_size}}",
     {{/elasticsearch.network_tcp_receive_buffer_size}}
-    "TASKCFG_ALL_TRANSPORT_TCP_CONNECT_TIMEOUT": "{{elasticsearch.transport_tcp_connect_timeout}}",
+    "TASKCFG_ALL_TRANSPORT_TCP_CONNECT_TIMEOUT": "{{elasticsearch.transport_tcp_connect_timeout}}", 
     "TASKCFG_ALL_TRANSPORT_TCP_COMPRESS": "{{elasticsearch.transport_tcp_compress}}",
     "TASKCFG_ALL_TRANSPORT_PING_SCHEDULE": "{{elasticsearch.transport_ping_schedule}}",
     "TASKCFG_ALL_HTTP_ENABLED": "{{elasticsearch.http_enabled}}",
@@ -235,7 +192,7 @@
     {{/elasticsearch.search_remote_connect}}
     {{#elasticsearch.indices_query_bool_max_clause_count}}
     "TASKCFG_ALL_INDICES_QUERY_BOOL_MAX_CLAUSE_COUNT": "{{elasticsearch.indices_query_bool_max_clause_count}}",
-    {{/elasticsearch.indices_query_bool_max_clause_count}}
+    {{/elasticsearch.indices_query_bool_max_clause_count}} 
     {{#elasticsearch.discovery_zen_ping_unicast_hosts_resolve_timeout}}
     "TASKCFG_ALL_DISCOVERY_ZEN_PING_UNICAST_HOSTS_RESOLVE_TIMEOUT": "{{elasticsearch.discovery_zen_ping_unicast_hosts_resolve_timeout}}",
     {{/elasticsearch.discovery_zen_ping_unicast_hosts_resolve_timeout}}
@@ -266,6 +223,9 @@
     {{#elasticsearch.cluster_routing_allocation_total_shards_per_node}}
     "TASKCFG_ALL_CLUSTER_ROUTING_ALLOCATION_TOTAL_SHARDS_PER_NODE": "{{elasticsearch.cluster_routing_allocation_total_shards_per_node}}",
     {{/elasticsearch.cluster_routing_allocation_total_shards_per_node}}
+    {{#elasticsearch.cluster_routing_allocation_awareness_attributes}}
+    "TASKCFG_ALL_CLUSTER_ROUTING_ALLOCATION_AWARENESS_ATTRIBUTES": "{{elasticsearch.cluster_routing_allocation_awareness_attributes}}",
+    {{/elasticsearch.cluster_routing_allocation_awareness_attributes}}
     {{#elasticsearch.cluster_routing_allocation_disk_threshold_enabled}}
     "TASKCFG_ALL_CLUSTER_ROUTING_ALLOCATION_DISK_THRESHOLD_ENABLED": "{{elasticsearch.cluster_routing_allocation_disk_threshold_enabled}}",
     {{/elasticsearch.cluster_routing_allocation_disk_threshold_enabled}}
@@ -320,10 +280,38 @@
     {{#elasticsearch.indices_requests_cache_size}}
     "TASKCFG_ALL_INDICES_REQUESTS_CACHE_SIZE": "{{elasticsearch.indices_requests_cache_size}}",
     {{/elasticsearch.indices_requests_cache_size}}
-    "CUSTOM_YAML_BLOCK_BASE64": "{{elasticsearch.custom_elasticsearch_yml}}"
+    "MASTER_NODE_CPUS": "{{master_nodes.cpus}}",
+    "MASTER_NODE_MEM": "{{master_nodes.mem}}",
+    "MASTER_NODE_PLACEMENT": "{{master_nodes.placement}}",
+    "MASTER_NODE_HEAP_MB": "{{master_nodes.heap.size}}",
+    "MASTER_NODE_DISK": "{{master_nodes.disk}}",
+    "MASTER_NODE_DISK_TYPE": "{{master_nodes.disk_type}}",
+    "MASTER_NODE_TRANSPORT_PORT": "{{master_nodes.transport_port}}",
+    "DATA_NODE_COUNT": "{{data_nodes.count}}",
+    "DATA_NODE_CPUS": "{{data_nodes.cpus}}",
+    "DATA_NODE_MEM": "{{data_nodes.mem}}",
+    "DATA_NODE_PLACEMENT": "{{data_nodes.placement}}",
+    "DATA_NODE_HEAP_MB": "{{data_nodes.heap.size}}",
+    "DATA_NODE_DISK": "{{data_nodes.disk}}",
+    "DATA_NODE_DISK_TYPE": "{{data_nodes.disk_type}}",
+    "INGEST_NODE_COUNT": "{{ingest_nodes.count}}",
+    "INGEST_NODE_CPUS": "{{ingest_nodes.cpus}}",
+    "INGEST_NODE_MEM": "{{ingest_nodes.mem}}",
+    "INGEST_NODE_PLACEMENT": "{{ingest_nodes.placement}}",
+    "INGEST_NODE_HEAP_MB": "{{ingest_nodes.heap.size}}",
+    "INGEST_NODE_DISK": "{{ingest_nodes.disk}}",
+    "INGEST_NODE_DISK_TYPE": "{{ingest_nodes.disk_type}}",
+    "COORDINATOR_NODE_COUNT": "{{coordinator_nodes.count}}",
+    "COORDINATOR_NODE_CPUS": "{{coordinator_nodes.cpus}}",
+    "COORDINATOR_NODE_MEM": "{{coordinator_nodes.mem}}",
+    "COORDINATOR_NODE_PLACEMENT": "{{coordinator_nodes.placement}}",
+    "COORDINATOR_NODE_HEAP_MB": "{{coordinator_nodes.heap.size}}",
+    "COORDINATOR_NODE_DISK": "{{coordinator_nodes.disk}}",
+    "COORDINATOR_NODE_DISK_TYPE": "{{coordinator_nodes.disk_type}}",
+    "CONFIG_TEMPLATE_PATH": "elastic-scheduler",
+    "TASKCFG_ALL_CUSTOM_YAML_BLOCK_BASE64": "{{elasticsearch.custom_elasticsearch_yml}}"
   },
   "uris": [
-    "{{resource.assets.uris.bootstrap-zip}}",
     "{{resource.assets.uris.jre-tar-gz}}",
     "{{resource.assets.uris.scheduler-zip}}",
     "{{resource.assets.uris.libmesos-bundle-tar-gz}}"
@@ -334,8 +322,17 @@
   },
   "healthChecks": [
     {
-      "protocol": "MESOS_HTTP",
-      "path": "/v1/health",
+      "protocol": "HTTP",
+      "path": "/v1/plans/deploy",
+      "gracePeriodSeconds": 900,
+      "intervalSeconds": 30,
+      "portIndex": 0,
+      "timeoutSeconds": 30,
+      "maxConsecutiveFailures": 0
+    },
+    {
+      "protocol": "HTTP",
+      "path": "/v1/plans/recovery",
       "gracePeriodSeconds": 900,
       "intervalSeconds": 30,
       "portIndex": 0,

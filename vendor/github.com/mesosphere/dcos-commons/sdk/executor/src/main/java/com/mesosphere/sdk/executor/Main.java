@@ -19,9 +19,14 @@ public class Main {
         new Main().run();
     }
 
-    private void run() throws Exception {
+    public void run() throws Exception {
+        final DefaultExecutorTaskFactory defaultExecutorTaskFactory = new DefaultExecutorTaskFactory();
+        final CustomExecutor customExecutor =
+                new CustomExecutor(Executors.newCachedThreadPool(), defaultExecutorTaskFactory);
+        final ExecutorDriver driver = new MesosExecutorDriverFactory().getDriver(customExecutor);
+
         executorService = Executors.newCachedThreadPool();
-        executorService.submit(new RunnableExecutor(new MesosExecutorDriverFactory().getDriver(new CustomExecutor())));
+        executorService.submit(new RunnableExecutor(driver));
     }
 
     private static class RunnableExecutor implements Runnable {

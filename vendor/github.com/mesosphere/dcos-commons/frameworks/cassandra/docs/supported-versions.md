@@ -1,10 +1,9 @@
 ---
-layout: layout.pug
-navigationTitle: 
-title: Supported Versions
-menuWeight: 110
-excerpt:
-
+post_title: Supported Versions
+nav_title: Supported Versions
+menu_order: 110
+post_excerpt: ""
+enterprise: 'no'
 ---
 
 <a name="package-versioning-scheme"></a>
@@ -25,3 +24,4 @@ The DC/OS Apache Cassandra Service is engineered and tested to work with a speci
 
 ## Mesosphere DC/OS
 [Submit a request](https://support.mesosphere.com/hc/en-us/requests/new).
+

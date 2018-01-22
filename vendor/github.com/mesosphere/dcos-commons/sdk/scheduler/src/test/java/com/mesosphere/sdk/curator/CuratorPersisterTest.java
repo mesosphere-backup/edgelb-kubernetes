@@ -4,9 +4,7 @@ import org.apache.curator.framework.CuratorFramework;
 import org.apache.curator.framework.api.ACLPathAndBytesable;
 import org.apache.curator.framework.api.CreateBuilder;
 import org.apache.curator.framework.api.ExistsBuilder;
-import org.apache.curator.framework.api.GetChildrenBuilder;
 import org.apache.curator.framework.api.PathAndBytesable;
-import org.apache.curator.framework.api.Pathable;
 import org.apache.curator.framework.api.ProtectACLCreateModePathAndBytesable;
 import org.apache.curator.framework.api.transaction.CuratorTransaction;
 import org.apache.curator.framework.api.transaction.CuratorTransactionBridge;
@@ -51,7 +49,6 @@ public class CuratorPersisterTest {
     @Mock private CreateBuilder mockCreateBuilder;
     @Mock private ProtectACLCreateModePathAndBytesable<String> mockCreateParentsBuilder;
     @Mock private ExistsBuilder mockExistsBuilder;
-    @Mock private GetChildrenBuilder mockGetChildrenBuilder;
     @Mock private Stat mockStat;
     private CuratorPersister mockedPersister;
 
@@ -62,18 +59,17 @@ public class CuratorPersisterTest {
     private static final String PATH_PARENT = "/path";
     private static final String PATH_1 = "/path/1";
     private static final String PATH_2 = "/path/2";
-    private static final String PATH_SUB_PARENT = "/path/sub";
     private static final String PATH_SUB_1 = "/path/sub/1";
     private static final String PATH_SUB_2 = "/path/sub/2";
 
     // Paths accessed internally (where stuff actually goes, prefixed with dcos-service-<svcname>):
     private static final String INTERNAL_PATH_SERVICE = String.format("/dcos-service-%s", TestConstants.SERVICE_NAME);
-    private static final String INTERNAL_PATH_PARENT = INTERNAL_PATH_SERVICE + PATH_PARENT;
-    private static final String INTERNAL_PATH_1 = INTERNAL_PATH_SERVICE + PATH_1;
-    private static final String INTERNAL_PATH_2 = INTERNAL_PATH_SERVICE + PATH_2;
-    private static final String INTERNAL_PATH_SUB_PARENT = INTERNAL_PATH_SERVICE + PATH_SUB_PARENT;
-    private static final String INTERNAL_PATH_SUB_1 = INTERNAL_PATH_SERVICE + PATH_SUB_1;
-    private static final String INTERNAL_PATH_SUB_2 = INTERNAL_PATH_SERVICE + PATH_SUB_2;
+    private static final String INTERNAL_PATH_PARENT = String.format("/dcos-service-%s/path", TestConstants.SERVICE_NAME);
+    private static final String INTERNAL_PATH_1 = String.format("/dcos-service-%s/path/1", TestConstants.SERVICE_NAME);
+    private static final String INTERNAL_PATH_2 = String.format("/dcos-service-%s/path/2", TestConstants.SERVICE_NAME);
+    private static final String INTERNAL_PATH_SUB_PARENT = String.format("/dcos-service-%s/path/sub", TestConstants.SERVICE_NAME);
+    private static final String INTERNAL_PATH_SUB_1 = String.format("/dcos-service-%s/path/sub/1", TestConstants.SERVICE_NAME);
+    private static final String INTERNAL_PATH_SUB_2 = String.format("/dcos-service-%s/path/sub/2", TestConstants.SERVICE_NAME);
     private static final List<String> INTERNAL_PATHS = Arrays.asList(
             INTERNAL_PATH_SERVICE, INTERNAL_PATH_PARENT, INTERNAL_PATH_1, INTERNAL_PATH_2, INTERNAL_PATH_SUB_PARENT,
             INTERNAL_PATH_SUB_1, INTERNAL_PATH_SUB_2);
@@ -83,15 +79,13 @@ public class CuratorPersisterTest {
     private static final byte[] DATA_SUB_1 = "sub_one".getBytes(Charset.defaultCharset());
     private static final byte[] DATA_SUB_2 = "sub_two".getBytes(Charset.defaultCharset());
 
-    private static final Map<String, byte[]> SET_MANY_MAP = new TreeMap<>();
+    private static final Map<String, byte[]> MANY_MAP = new TreeMap<>(); // use consistent ordering
     static {
-        SET_MANY_MAP.put(PATH_1, DATA_1);
-        SET_MANY_MAP.put(PATH_2, DATA_2);
-        SET_MANY_MAP.put(PATH_SUB_1, DATA_SUB_1);
-        SET_MANY_MAP.put(PATH_SUB_2, DATA_SUB_2);
+        MANY_MAP.put(PATH_1, DATA_1);
+        MANY_MAP.put(PATH_2, DATA_2);
+        MANY_MAP.put(PATH_SUB_1, DATA_SUB_1);
+        MANY_MAP.put(PATH_SUB_2, DATA_SUB_2);
     }
-    // the nested deletes will be autodetected, depending on the scenario
-    private static final Collection<String> DELETE_MANY_LIST = Arrays.asList("/");
 
     @BeforeClass
     public static void beforeAll() throws Exception {
@@ -135,23 +129,26 @@ public class CuratorPersisterTest {
     }
 
     @Test
-    public void testSetManyAgainstEmpty() throws Exception {
-        setupEmpty();
+    public void testSetManyAgainstEmptySucceeds() throws Exception {
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        for (String path : INTERNAL_PATHS) {
+            when(mockExistsBuilder.forPath(path)).thenReturn(null);
+        }
         TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
         when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
-        assertEquals(transaction.operations.toString(), 8, transaction.operations.size());
+        mockedPersister.setMany(MANY_MAP);
+        assertEquals(transaction.operations.toString(), 7, transaction.operations.size());
         TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_SERVICE, op.path);
         assertNull(op.data);
         op = transaction.operations.get(1);
         assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
+        assertEquals(INTERNAL_PATH_PARENT, op.path);
         assertNull(op.data);
         op = transaction.operations.get(2);
         assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_PARENT, op.path);
+        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
         assertNull(op.data);
         op = transaction.operations.get(3);
         assertEquals(TestOperation.Mode.CREATE, op.mode);
@@ -163,123 +160,99 @@ public class CuratorPersisterTest {
         assertArrayEquals(DATA_2, op.data);
         op = transaction.operations.get(5);
         assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
-        assertNull(op.data);
+        assertEquals(INTERNAL_PATH_SUB_1, op.path);
+        assertArrayEquals(DATA_SUB_1, op.data);
         op = transaction.operations.get(6);
         assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_1, op.path);
-        assertArrayEquals(DATA_SUB_1, op.data);
-        op = transaction.operations.get(7);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_SUB_2, op.path);
         assertArrayEquals(DATA_SUB_2, op.data);
     }
 
     @Test
-    public void testSetManyAgainstOnesMissing() throws Exception {
-        setupOnesMissing();
+    public void testSetManyAgainstPartialOnesSucceeds() throws Exception {
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_1)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_2)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(mockStat);
         TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
         when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
+        mockedPersister.setMany(MANY_MAP);
+        assertEquals(transaction.operations.toString(), 4, transaction.operations.size());
+        TestOperation op = transaction.operations.get(0);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
+        assertEquals(INTERNAL_PATH_1, op.path);
+        assertArrayEquals(DATA_1, op.data);
+        op = transaction.operations.get(1);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
+        assertEquals(INTERNAL_PATH_2, op.path);
+        assertArrayEquals(DATA_2, op.data);
+        op = transaction.operations.get(2);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
+        assertEquals(INTERNAL_PATH_SUB_1, op.path);
+        assertArrayEquals(DATA_SUB_1, op.data);
+        op = transaction.operations.get(3);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
+        assertEquals(INTERNAL_PATH_SUB_2, op.path);
+        assertArrayEquals(DATA_SUB_2, op.data);
+    }
+
+    @Test
+    public void testSetManyAgainstPartialRootsSucceeds() throws Exception {
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_1)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_2)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(mockStat);
+        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
+        when(mockClient.inTransaction()).thenReturn(transaction);
+        mockedPersister.setMany(MANY_MAP);
         assertEquals(transaction.operations.toString(), 5, transaction.operations.size());
         TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-        assertNull(op.data);
-        op = transaction.operations.get(1);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_1, op.path);
-        assertArrayEquals(DATA_1, op.data);
-        op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
-        assertEquals(INTERNAL_PATH_2, op.path);
-        assertArrayEquals(DATA_2, op.data);
-        op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_1, op.path);
-        assertArrayEquals(DATA_SUB_1, op.data);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_2, op.path);
-        assertArrayEquals(DATA_SUB_2, op.data);
-    }
-
-    @Test
-    public void testSetManyAgainstRootsMissing() throws Exception {
-        setupRootsMissing();
-        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
-        when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
-        assertEquals(transaction.operations.toString(), 6, transaction.operations.size());
-        TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-        assertNull(op.data);
-        op = transaction.operations.get(1);
         assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_PARENT, op.path);
         assertNull(op.data);
-        op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_1, op.path);
-        assertArrayEquals(DATA_1, op.data);
-        op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_2, op.path);
-        assertArrayEquals(DATA_2, op.data);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_1, op.path);
-        assertArrayEquals(DATA_SUB_1, op.data);
-        op = transaction.operations.get(5);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_2, op.path);
-        assertArrayEquals(DATA_SUB_2, op.data);
-    }
-
-    @Test
-    public void testSetManyAgainstSubsMissing() throws Exception {
-        setupSubsMissing();
-        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
-        when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
-        assertEquals(transaction.operations.toString(), 6, transaction.operations.size());
-        TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-        assertNull(op.data);
         op = transaction.operations.get(1);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_1, op.path);
         assertArrayEquals(DATA_1, op.data);
         op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_2, op.path);
         assertArrayEquals(DATA_2, op.data);
         op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
-        assertNull(op.data);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
         assertEquals(INTERNAL_PATH_SUB_1, op.path);
         assertArrayEquals(DATA_SUB_1, op.data);
-        op = transaction.operations.get(5);
-        assertEquals(TestOperation.Mode.CREATE, op.mode);
+        op = transaction.operations.get(4);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
         assertEquals(INTERNAL_PATH_SUB_2, op.path);
         assertArrayEquals(DATA_SUB_2, op.data);
     }
 
     @Test
-    public void testSetManyAgainstFull() throws Exception {
-        setupFull();
+    public void testSetManyAgainstPartialSubsSucceeds() throws Exception {
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_1)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_2)).thenReturn(mockStat);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(null);
+        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(null);
         TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
         when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
+        mockedPersister.setMany(MANY_MAP);
         assertEquals(transaction.operations.toString(), 5, transaction.operations.size());
         TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
+        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
         assertNull(op.data);
         op = transaction.operations.get(1);
         assertEquals(TestOperation.Mode.SET_DATA, op.mode);
@@ -290,152 +263,63 @@ public class CuratorPersisterTest {
         assertEquals(INTERNAL_PATH_2, op.path);
         assertArrayEquals(DATA_2, op.data);
         op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_SUB_1, op.path);
         assertArrayEquals(DATA_SUB_1, op.data);
         op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
+        assertEquals(TestOperation.Mode.CREATE, op.mode);
         assertEquals(INTERNAL_PATH_SUB_2, op.path);
         assertArrayEquals(DATA_SUB_2, op.data);
     }
 
     @Test
-    public void testDeleteManyAgainstEmpty() throws Exception {
-        setupEmpty();
+    public void testSetManyAgainstFullSucceeds() throws Exception {
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        for (String path : INTERNAL_PATHS) {
+            when(mockExistsBuilder.forPath(path)).thenReturn(mockStat);
+        }
         TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
         when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.recursiveDeleteMany(DELETE_MANY_LIST);
-        assertEquals(transaction.operations.toString(), 1, transaction.operations.size());
+        mockedPersister.setMany(MANY_MAP);
+        assertEquals(transaction.operations.toString(), 4, transaction.operations.size());
         TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-    }
-
-    @Test
-    public void testDeleteManyAgainstOnesMissing() throws Exception {
-        setupOnesMissing();
-        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
-        when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.recursiveDeleteMany(DELETE_MANY_LIST);
-        assertEquals(transaction.operations.toString(), 6, transaction.operations.size());
-        TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-        op = transaction.operations.get(1);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_2, op.path);
-        op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_2, op.path);
-        op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_PARENT, op.path);
-        op = transaction.operations.get(5);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-    }
-
-    @Test
-    public void testDeleteManyAgainstRootsMissing() throws Exception {
-        setupRootsMissing();
-        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
-        when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.recursiveDeleteMany(DELETE_MANY_LIST);
-        assertEquals(transaction.operations.toString(), 6, transaction.operations.size());
-        TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-        op = transaction.operations.get(1);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_1, op.path);
-        op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_2, op.path);
-        op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_PARENT, op.path);
-        op = transaction.operations.get(5);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-    }
-
-    @Test
-    public void testDeleteManyAgainstSubsMissing() throws Exception {
-        setupSubsMissing();
-        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
-        when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.recursiveDeleteMany(DELETE_MANY_LIST);
-        assertEquals(transaction.operations.toString(), 5, transaction.operations.size());
-        TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-        op = transaction.operations.get(1);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
         assertEquals(INTERNAL_PATH_1, op.path);
-        op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_2, op.path);
-        op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_PARENT, op.path);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
-    }
-
-    @Test
-    public void testDeleteManyAgainstFull() throws Exception {
-        setupFull();
-        TestTransaction transaction = new TestTransaction(TestTransaction.Result.SUCCESS);
-        when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.recursiveDeleteMany(DELETE_MANY_LIST);
-        assertEquals(transaction.operations.toString(), 8, transaction.operations.size());
-        TestOperation op = transaction.operations.get(0);
-        assertEquals(TestOperation.Mode.CHECK, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
+        assertArrayEquals(DATA_1, op.data);
         op = transaction.operations.get(1);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_1, op.path);
-        op = transaction.operations.get(2);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
         assertEquals(INTERNAL_PATH_2, op.path);
-        op = transaction.operations.get(3);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
+        assertArrayEquals(DATA_2, op.data);
+        op = transaction.operations.get(2);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
         assertEquals(INTERNAL_PATH_SUB_1, op.path);
-        op = transaction.operations.get(4);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
+        assertArrayEquals(DATA_SUB_1, op.data);
+        op = transaction.operations.get(3);
+        assertEquals(TestOperation.Mode.SET_DATA, op.mode);
         assertEquals(INTERNAL_PATH_SUB_2, op.path);
-        op = transaction.operations.get(5);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SUB_PARENT, op.path);
-        op = transaction.operations.get(6);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_PARENT, op.path);
-        op = transaction.operations.get(7);
-        assertEquals(TestOperation.Mode.DELETE, op.mode);
-        assertEquals(INTERNAL_PATH_SERVICE, op.path);
+        assertArrayEquals(DATA_SUB_2, op.data);
     }
 
     @Test(expected=PersisterException.class)
     public void testSetManyAgainstEmptyFails() throws Exception {
-        setupEmpty();
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        for (String path : INTERNAL_PATHS) {
+            when(mockExistsBuilder.forPath(path)).thenReturn(null);
+        }
         TestTransaction transaction = new TestTransaction(TestTransaction.Result.EXCEPTION);
         when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
+        mockedPersister.setMany(MANY_MAP);
     }
 
     @Test(expected=PersisterException.class)
     public void testSetManyAgainstFullFails() throws Exception {
-        setupFull();
+        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
+        for (String path : INTERNAL_PATHS) {
+            when(mockExistsBuilder.forPath(path)).thenReturn(mockStat);
+        }
         TestTransaction transaction = new TestTransaction(TestTransaction.Result.EXCEPTION);
         when(mockClient.inTransaction()).thenReturn(transaction);
-        mockedPersister.setMany(SET_MANY_MAP);
+        mockedPersister.setMany(MANY_MAP);
     }
 
     // Uses a real ZK instance to ensure that our integration works as expected:
@@ -476,7 +360,7 @@ public class CuratorPersisterTest {
         }
 
         // Delete ACL'ed data so that other tests don't have ACL problems trying to clear it:
-        aclPersister.recursiveDelete(PATH_PARENT);
+        aclPersister.deleteAll(PATH_PARENT);
     }
 
     // Uses a real ZK instance to ensure that our integration works as expected:
@@ -497,7 +381,7 @@ public class CuratorPersisterTest {
         persister.set("c", DATA_1);
         persister.set("d/1/a/1", DATA_2);
 
-        persister.recursiveDelete("");
+        persister.deleteAll("");
 
         // The root-level "lock" is preserved (it's special):
         assertEquals(Collections.singleton("lock"), persister.getChildren(""));
@@ -528,83 +412,6 @@ public class CuratorPersisterTest {
         } catch (IllegalArgumentException e) {
             assertTrue(e.getMessage().contains("double underscore"));
         }
-    }
-
-    private void setupCommon() throws Exception {
-        when(mockClient.checkExists()).thenReturn(mockExistsBuilder);
-        when(mockClient.getChildren()).thenReturn(mockGetChildrenBuilder);
-    }
-
-    private void setupFull() throws Exception {
-        setupCommon();
-        for (String path : INTERNAL_PATHS) {
-            when(mockExistsBuilder.forPath(path)).thenReturn(mockStat);
-        }
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(Arrays.asList("path"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(Arrays.asList("1", "2", "sub"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_1)).thenReturn(Collections.emptyList());
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_2)).thenReturn(Collections.emptyList());
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(Arrays.asList("1", "2"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(Collections.emptyList());
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(Collections.emptyList());
-    }
-
-    private void setupEmpty() throws Exception {
-        setupCommon();
-        for (String path : INTERNAL_PATHS) {
-            when(mockExistsBuilder.forPath(path)).thenReturn(null);
-        }
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(Collections.emptyList());
-    }
-
-    private void setupOnesMissing() throws Exception {
-        setupCommon();
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_1)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_2)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(mockStat);
-
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(Arrays.asList("path"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(Arrays.asList("2", "sub"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_2)).thenReturn(Collections.emptyList());
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(Arrays.asList("2"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(Collections.emptyList());
-    }
-
-    private void setupRootsMissing() throws Exception {
-        setupCommon();
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_1)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_2)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(mockStat);
-
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(Arrays.asList("path"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(Arrays.asList("sub"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(Arrays.asList("1", "2"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(Collections.emptyList());
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(Collections.emptyList());
-    }
-
-    private void setupSubsMissing() throws Exception {
-        setupCommon();
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_1)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_2)).thenReturn(mockStat);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_PARENT)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_1)).thenReturn(null);
-        when(mockExistsBuilder.forPath(INTERNAL_PATH_SUB_2)).thenReturn(null);
-
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_SERVICE)).thenReturn(Arrays.asList("path"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_PARENT)).thenReturn(Arrays.asList("1", "2"));
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_1)).thenReturn(Collections.emptyList());
-        when(mockGetChildrenBuilder.forPath(INTERNAL_PATH_2)).thenReturn(Collections.emptyList());
     }
 
     /**
@@ -638,13 +445,6 @@ public class CuratorPersisterTest {
         }
 
         @Override
-        public TransactionCheckBuilder check() {
-            TestCheck operation = new TestCheck(this);
-            operations.add(operation);
-            return operation;
-        }
-
-        @Override
         public TransactionCreateBuilder create() {
             TestCreate operation = new TestCreate(this);
             operations.add(operation);
@@ -659,28 +459,28 @@ public class CuratorPersisterTest {
         }
 
         @Override
-        public TransactionDeleteBuilder delete() {
-            TestDelete operation = new TestDelete(this);
-            operations.add(operation);
-            return operation;
-        }
-
-        @Override
         public Collection<CuratorTransactionResult> commit() throws Exception {
             if (exceptionToThrow != null) {
                 throw exceptionToThrow;
             }
             return Collections.emptyList();
         }
+
+        @Override
+        public TransactionDeleteBuilder delete() {
+            throw new UnsupportedOperationException();
+        }
+        @Override
+        public TransactionCheckBuilder check() {
+            throw new UnsupportedOperationException();
+        }
     }
 
     private static class TestOperation implements PathAndBytesable<CuratorTransactionBridge> {
 
         private enum Mode {
-            CHECK,
             CREATE,
-            SET_DATA,
-            DELETE
+            SET_DATA
         }
 
         private final CuratorTransactionBridge returnMe;
@@ -713,16 +513,6 @@ public class CuratorPersisterTest {
         }
     }
 
-    private static class TestCheck extends TestOperation implements TransactionCheckBuilder {
-        private TestCheck(CuratorTransactionFinal returnMe) {
-            super(TestOperation.Mode.CHECK, returnMe);
-        }
-        @Override
-        public Pathable<CuratorTransactionBridge> withVersion(int version) {
-            throw new UnsupportedOperationException();
-        }
-    }
-
     private static class TestCreate extends TestOperation implements TransactionCreateBuilder {
         private TestCreate(CuratorTransactionFinal returnMe) {
             super(TestOperation.Mode.CREATE, returnMe);
@@ -751,16 +541,6 @@ public class CuratorPersisterTest {
         }
         @Override
         public PathAndBytesable<CuratorTransactionBridge> compressed() {
-            throw new UnsupportedOperationException();
-        }
-    }
-
-    private static class TestDelete extends TestOperation implements TransactionDeleteBuilder {
-        private TestDelete(CuratorTransactionFinal returnMe) {
-            super(TestOperation.Mode.DELETE, returnMe);
-        }
-        @Override
-        public Pathable<CuratorTransactionBridge> withVersion(int version) {
             throw new UnsupportedOperationException();
         }
     }
