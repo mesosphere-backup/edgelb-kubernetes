@@ -3,7 +3,7 @@ GOIMAGE=golang:1.9-alpine
 GLIDEIMAGE=instrumentisto/glide:0.13.1-go1.9
 
 #docker build env
-GOBUILDENV="-e GOPATH='/go' -e CGO_ENABLED=0 -e GOOS='linux'"
+GOBUILDENV=-e GOPATH='/go' -e CGO_ENABLED=0 -e GOOS='linux' -e GOARCH=amd64
 SPECDIR=vendor/github.com/mesosphere/dcos-edge-lb/apiserver/spec/
 
 all:edgelb_controller

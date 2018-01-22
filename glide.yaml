@@ -11,6 +11,47 @@ import:
 - package: github.com/mesosphere/dcos-edge-lb
   version: refactor-client
   repo: https://github.com/asridharan/dcos-edge-lb.git
+- package: github.com/go-openapi/analysis
+  version: d5a75b7d751ca3f11ad5d93cfe97405f2c3f6a47
+- package: github.com/go-openapi/errors
+  version: fc3f73a224499b047eda7191e5d22e1e9631e86f
+- package: github.com/go-openapi/jsonpointer
+  version: 779f45308c19820f1a69e9a4cd965f496e0da10f
+- package: github.com/go-openapi/jsonreference
+  version: 36d33bfe519efae5632669801b180bf1a245da3b
+- package: github.com/go-openapi/loads
+  version: 6bb6486231e079ea125c0f39994ed3d0c53399ed
+- package: github.com/go-openapi/loads/fmts
+  version: 6bb6486231e079ea125c0f39994ed3d0c53399ed
 - package: github.com/go-openapi/runtime
-  version: a76104f379d3c5041f2a56e69db3ad8404ce4826
+  version: 76cda4f2f90d26d9b4fa56447e6c85cd7b60a371
+  subpackages:
+  - client
+  - middleware
+  - middelware/denco
+  - middelware/header
+  - middelware/untyped
+  - security
+- package: github.com/go-openapi/spec
+  version: 02fb9cd3430ed0581e0ceb4804d5d4b3cc702694
+- package: github.com/go-openapi/strfmt
+  version: bf5b18a89572c3ae2474b537f0c3d92bc78ababa
+- package: github.com/go-openapi/swag
+  version: f3f9494671f93fcff853e3c6e9e948b3eb71e590
+- package: github.com/go-openapi/validate
+  version: 035dcd74f1f61e83debe1c22950dc53556e7e4b2
+- package: github.com/mailru/easyjson
+  version: 7a67b2a71355cf13a4569dc220e1dc50b404d2a2
+  subpackages:
+  - buffer
+  - jlexer
+  - jwriter
+- package: github.com/mesosphere/dcos-commons
+  version: 38f2a43e03411a2acc9f52ff51d0394e1568186d
+  subpackages:
+  - cli/client
+  - cli/config
+
+   
+
 

@@ -1,5 +1,5 @@
-hash: 2e3385fe12e05401b7e62f84fc07a6e7b9a8492c23ee9eaff36e5e1f8602eacb
-updated: 2018-01-21T23:21:33.560051833Z
+hash: 1b4636cc66c29c7da16e658dd1f059b0440e6374c1b23acb50482c92bb83a164
+updated: 2018-01-22T00:50:57.396390363Z
 imports:
 - name: github.com/asaskevich/govalidator
   version: 4b3d68f87f176641ffc147420296013aff66ea32
@@ -12,8 +12,6 @@ imports:
   - internal/queue/mpsc
   - log
   - mailbox
-- name: github.com/BurntSushi/toml
-  version: a368813c5e648fee92e5f6c30e3944ff9d5e8895
 - name: github.com/davecgh/go-spew
   version: 782f4967f2dc4564575ca782fe2d04090b5faca8
   subpackages:
@@ -40,33 +38,34 @@ imports:
 - name: github.com/ghodss/yaml
   version: 73d445a93680fa1a78ae23a5839bad48f32ba1ee
 - name: github.com/go-openapi/analysis
-  version: 0db1e4cf47d6eb0fc6b25135868c3483cc6b066e
+  version: d5a75b7d751ca3f11ad5d93cfe97405f2c3f6a47
 - name: github.com/go-openapi/errors
-  version: 7bcb96a367bac6b76e6e42fa84155bb5581dcff8
+  version: fc3f73a224499b047eda7191e5d22e1e9631e86f
 - name: github.com/go-openapi/jsonpointer
-  version: 46af16f9f7b149af66e5d1bd010e3574dc06de98
+  version: 779f45308c19820f1a69e9a4cd965f496e0da10f
 - name: github.com/go-openapi/jsonreference
-  version: 13c6e3589ad90f49bd3e3bbe2c2cb3d7a4142272
+  version: 36d33bfe519efae5632669801b180bf1a245da3b
 - name: github.com/go-openapi/loads
-  version: 2a2b323bab96e6b1fdee110e57d959322446e9c9
+  version: 6bb6486231e079ea125c0f39994ed3d0c53399ed
+  subpackages:
+  - fmts
 - name: github.com/go-openapi/runtime
-  version: a76104f379d3c5041f2a56e69db3ad8404ce4826
+  version: 76cda4f2f90d26d9b4fa56447e6c85cd7b60a371
   subpackages:
   - client
-  - logger
+  - middelware/denco
+  - middelware/header
+  - middelware/untyped
   - middleware
-  - middleware/denco
-  - middleware/header
-  - middleware/untyped
   - security
 - name: github.com/go-openapi/spec
-  version: 6aced65f8501fe1217321abf0749d354824ba2ff
+  version: 02fb9cd3430ed0581e0ceb4804d5d4b3cc702694
 - name: github.com/go-openapi/strfmt
-  version: 4dd3d302e100bae008baedc42d446ce83bdd10ad
+  version: bf5b18a89572c3ae2474b537f0c3d92bc78ababa
 - name: github.com/go-openapi/swag
-  version: 1d0bd113de87027671077d3c71eb3ac5d7dbba72
+  version: f3f9494671f93fcff853e3c6e9e948b3eb71e590
 - name: github.com/go-openapi/validate
-  version: 9b5947525af6a4843d2b9576e5943b9931ad535d
+  version: 035dcd74f1f61e83debe1c22950dc53556e7e4b2
 - name: github.com/gogo/protobuf
   version: c0656edd0d9eab7c66d1eb0c568f9039345796f7
   subpackages:
@@ -111,18 +110,18 @@ imports:
 - name: github.com/juju/ratelimit
   version: 5b9ff866471762aa2ab2dced63c9fb6f53921342
 - name: github.com/mailru/easyjson
-  version: d5b7844b561a7bc640052f1b935f7b800330d7e0
+  version: 7a67b2a71355cf13a4569dc220e1dc50b404d2a2
   subpackages:
   - buffer
   - jlexer
   - jwriter
 - name: github.com/mesosphere/dcos-commons
-  version: adad830aac3758f1571ec532962c90d9eef10f1d
+  version: 38f2a43e03411a2acc9f52ff51d0394e1568186d
   subpackages:
   - cli/client
   - cli/config
 - name: github.com/mesosphere/dcos-edge-lb
-  version: d523dfaeedd356c95c8b73a67605341e14d207e3
+  version: 63d632a6fd2bd5ef1dfa530fc76f082755240193
   repo: https://github.com/asridharan/dcos-edge-lb.git
   subpackages:
   - apiserver/client

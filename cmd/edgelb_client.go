@@ -1,22 +1,38 @@
 package main
 
 import (
-	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
-	"github.com/Sirupsen/logrus"
-	"github.com/mesosphere/dcos-edge-lb/apiserver/dcos"
-	"github.com/mesosphere/dcos-edge-lb/apiserver/util"
 	"io/ioutil"
 	"net/http"
+	"time"
+
+	//logging library
+	"github.com/Sirupsen/logrus"
+
+	// DC/OS dependencies
+	"github.com/dcos/dcos-go/dcos/http/transport"
+	"github.com/mesosphere/dcos-commons/cli/config"
+
+	// Edge-lb dependencies
+	edgelbOperations "github.com/mesosphere/dcos-edge-lb/apiserver/client/operations"
+	"github.com/mesosphere/dcos-edge-lb/apiserver/dcos"
+	"github.com/mesosphere/dcos-edge-lb/apiserver/util"
+	edgelb "github.com/mesosphere/dcos-edge-lb/framework/edgelb/cli/dcos-edgelb/client"
 )
 
 func check(e error) {
 	if e != nil {
-		panic(e)
+		panic(fmt.Sprintf("Something went horribly wrong:%s", e))
 	}
 }
 
 func main() {
+
+	// Setting up the global service name
+	config.ServiceName = "edgelb"
+	config.DcosURL = "https://leader.mesos"
 
 	logger := util.Logger
 	logger.SetLevel(logrus.DebugLevel)
@@ -26,46 +42,40 @@ func main() {
 	check(err)
 	fmt.Print(string(dat))
 
-	dcosCreds := string(dat)
-	dcosAddr := "172.17.0.2/service/edge-lb/"
-	dcosProt := "https"
+	dcosCredsStr := string(dat)
 
-	// Connect to Edge-lb using a `dcos client`.
-	dcosClientFactory := dcos.MakeClientFn(dcosCreds, dcosAddr, dcosProt)
-
-	if dcosClientFactory == nil {
-		panic("Could not create client factory")
+	httpClient := &http.Client{
+		Transport: &http.Transport{},
 	}
 
-	fmt.Printf("Created dcos client factory %v\n", dcosClientFactory)
-
-	// Hit the echo API.
-	ctx := context.Background()
-
-	client := dcosClientFactory()
-
-	if client == nil {
-		panic("Could not create client")
-	}
-	client.WithURL("https://172.17.0.2/service/edgelb/")
-
-	fmt.Printf("Created dcos client %v\n", client)
-
-	request := func() (*http.Request, error) {
-		return client.CreateRequest("GET", "/ping", "")
+	// Setup HTTPS client
+	tlsConfig := &tls.Config{}
+	tlsConfig.InsecureSkipVerify = true
+	httpClient.Transport = &http.Transport{
+		TLSClientConfig: tlsConfig,
 	}
 
-	retry := func(resp *http.Response) bool {
-		return false
+	dcosCreds := &dcos.AuthCreds{}
+	if err := json.Unmarshal([]byte(dcosCredsStr), dcosCreds); err != nil {
+		panic(fmt.Sprintf("Failed to decode dcos auth credentials. Error: %s", err))
 	}
 
-	fmt.Printf("Created request %v\n", request)
-	_, err = client.HTTPExecute(ctx, request, retry)
-
+	creds := transport.OptionCredentials(dcosCreds.UID, dcosCreds.Secret, dcosCreds.LoginEndpoint)
+	expire := transport.OptionTokenExpire(time.Minute * 10)
+	rt, err := transport.NewRoundTripper(httpClient.Transport, creds, expire)
 	if err != nil {
-		fmt.Printf("Unable to get a pong from Edge-lb %s", err)
+		panic(fmt.Sprintf("Failed to create HTTP client with configured service account: %s", err))
 	}
 
-	fmt.Printf("Sent request.\n")
+	params := edgelbOperations.NewPingParams()
+	edgelbClient, err := edgelb.NewWithRoundTripper(rt)
+	if err != nil {
+		panic(fmt.Sprintf("Failed to create edgelb client with configured service account: %s", err))
+	}
+	resp, err := edgelbClient.Ping(params)
+	if err != nil {
+		panic(fmt.Sprintf("Unable to send the ping command to edgelb with:%s", err))
+	}
 
+	fmt.Printf("%s", resp.Payload)
 }
