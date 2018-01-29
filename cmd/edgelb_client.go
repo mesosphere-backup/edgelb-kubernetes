@@ -30,7 +30,7 @@ func check(e error) {
 
 func main() {
 
-	// Setting up the global service name
+	// Setting up the global service name and DC/OS URL.
 	config.ServiceName = "edgelb"
 	config.DcosURL = "https://leader.mesos"
 

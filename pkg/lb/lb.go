@@ -15,8 +15,15 @@ type LoadBalancer interface {
 	RemoveService(vhost state.VHost, service state.Service) error
 }
 
+// The remote backend which is a physical representation of this LoadBalancer.
+type LoadBalancerBackend interface {
+	ConfigureVHost(vhost state.VHost) error
+	UnconfigureVHost(vhost state.VHost) error
+}
+
 type DefaultLoadBalancer struct {
-	vhosts map[string]LBState.VHost
+	lbBackend LoadBalancerBackend
+	vhosts    map[string]LBState.VHost
 }
 
 func NewDefaultLoadBalancer() (lb *DefaultLoadBalancer) {
