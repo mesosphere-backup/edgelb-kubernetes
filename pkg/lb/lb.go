@@ -17,8 +17,8 @@ type LoadBalancer interface {
 
 // The remote backend which is a physical representation of this LoadBalancer.
 type LoadBalancerBackend interface {
-	ConfigureVHost(vhost state.VHost) error
-	UnconfigureVHost(vhost state.VHost) error
+	ConfigureVHost(vhost LBState.VHost) error
+	UnconfigureVHost(vhost LBState.VHost) error
 }
 
 type DefaultLoadBalancer struct {
@@ -26,9 +26,10 @@ type DefaultLoadBalancer struct {
 	vhosts    map[string]LBState.VHost
 }
 
-func NewDefaultLoadBalancer() (lb *DefaultLoadBalancer) {
-	lb := &DefaultLoadBalancer{
-		vhosts: make(map[string]LBState.VHost),
+func NewDefaultLoadBalancer(lbBackend LoadBalancerBackend) (lb *DefaultLoadBalancer) {
+	lb = &DefaultLoadBalancer{
+		vhosts:    make(map[string]LBState.VHost),
+		lbBackend: lbBackend,
 	}
 
 	return
@@ -62,8 +63,8 @@ func (lb *DefaultLoadBalancer) RemoveVHost(vhost state.VHost) (err error) {
 }
 
 func (lb *DefaultLoadBalancer) ExposeService(vhost state.VHost, service state.Service) (err error) {
-	var lbVHost LBState.VHost
-	if lbVHost, ok := lb.vhosts[vhost.Host]; !ok {
+	lbVHost, ok := lb.vhosts[vhost.Host]
+	if !ok {
 		err = fmt.Errorf("Cannot expose service:%s to non-existent VHost:%s", service, vhost.Host)
 		return
 	}
@@ -71,14 +72,12 @@ func (lb *DefaultLoadBalancer) ExposeService(vhost state.VHost, service state.Se
 	// Add endpoints from this service to the given VHost.
 	for _, url := range service.URLs {
 		if url.Host == lbVHost.Host {
-			if _, ok := lbVHost.Routes[url.Path]; !ok {
-				err = fmt.Errorf("Cannot expose service:%s to non-existent path %s on VHost:%s", service, url.Host, url.Path)
-				return
-			}
+			route := LBState.Route{Path: url.Path}
 
-			for endpoint := range service.Endpoints {
-				lbVHost.Routes[url.Path][endpoint] = LBState.Address{Address: endpoint}
+			for _, endpoint := range service.Endpoints {
+				route.Backends[endpoint.String()] = LBState.Backend{Address: endpoint.Address}
 			}
+			lbVHost.Routes[route.String()] = route
 
 			// Write the `lbVHost` object back to the `map` so that the state gets updated.
 			lb.vhosts[lbVHost.Host] = lbVHost
@@ -90,8 +89,8 @@ func (lb *DefaultLoadBalancer) ExposeService(vhost state.VHost, service state.Se
 }
 
 func (lb *DefaultLoadBalancer) RemoveService(vhost state.VHost, service state.Service) (err error) {
-	var lbVHost LBState.VHost
-	if lbVHost, ok := lb.vhosts[vhost.Host]; !ok {
+	lbVHost, ok := lb.vhosts[vhost.Host]
+	if !ok {
 		err = fmt.Errorf("Cannot remove service:%s to non-existent VHost:%s", service, vhost.Host)
 		return
 	}

@@ -1,9 +1,5 @@
 package state
 
-import (
-	"fmt"
-)
-
 type VHost struct {
 	Host   string           //FQDN of the VHost.
 	Routes map[string]Route // All the routes supported by this VHost
@@ -15,13 +11,13 @@ type Route struct {
 }
 
 type Backend struct {
-	Address []string // An address for a backend is of the form IP:port
+	Address string // An address for a backend is of the form IP:port
 }
 
 func NewVHost(Host string) (vhost *VHost) {
 	vhost = &VHost{
-		Host:  Host,
-		Route: make(map[string]Route),
+		Host:   Host,
+		Routes: make(map[string]Route),
 	}
 
 	return
@@ -34,4 +30,12 @@ func NewRoute(Path string) (route *Route) {
 	}
 
 	return
+}
+
+func (route Route) String() string {
+	return route.Path
+}
+
+func (backend Backend) String() string {
+	return backend.Address
 }

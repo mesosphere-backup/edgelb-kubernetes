@@ -20,7 +20,12 @@ import (
 	"os"
 	"path/filepath"
 
+	// Edgelb-k8s
 	"edgelb-k8s/pkg/ingress"
+	"edgelb-k8s/pkg/lb"
+	"edgelb-k8s/pkg/lb/edgelb"
+
+	// k8s
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
@@ -79,7 +84,13 @@ func main() {
 		clientset = internalClient()
 	}
 
-	ctrl, err := ingress.NewController(clientset)
+	// Initialize Edge-LB.
+	edgelbBackend, err := edgelb.New("edge-lb", "https://leader.mesos", "")
+
+	// Initialize the load-balancer.
+	loadBalancer := lb.NewDefaultLoadBalancer(edgelbBackend)
+
+	ctrl, err := ingress.NewController(clientset, loadBalancer)
 	if err != nil {
 		panic(err.Error())
 	}

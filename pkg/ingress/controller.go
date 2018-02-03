@@ -10,6 +10,7 @@ import (
 	"github.com/AsynkronIT/protoactor-go/actor"
 
 	// Ingress controller
+	"edgelb-k8s/pkg/lb"
 	"edgelb-k8s/pkg/state"
 
 	// RxGo
@@ -93,9 +94,12 @@ type controller struct {
 	ingressMsgs   chan interface{}
 	serviceMsgs   chan interface{}
 	endpointsMsgs chan interface{}
+
+	// Setup the load-balancer
+	loadBalancer lb.LoadBalancer
 }
 
-func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error) {
+func NewController(clientset *kubernetes.Clientset, loadBalancer lb.LoadBalancer) (ctrl Controller, err error) {
 	resyncPeriod := 30 * time.Minute
 	si := informers.NewSharedInformerFactory(clientset, resyncPeriod)
 
@@ -108,6 +112,7 @@ func NewController(clientset *kubernetes.Clientset) (ctrl Controller, err error)
 		ingressMsgs:      make(chan interface{}),
 		serviceMsgs:      make(chan interface{}),
 		endpointsMsgs:    make(chan interface{}),
+		loadBalancer:     loadBalancer,
 	}
 
 	ctrl = &ingressCtrl
