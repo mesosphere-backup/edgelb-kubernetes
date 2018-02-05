@@ -18,3 +18,15 @@ spec:
       - name: edgelb-k8s
         image: mesosphere/edgelb-k8s-controller
         imagePullPolicy: Always
+        volumeMounts:
+        - name: edge-lb-secret
+          mountPath: "/dcos/secrets"
+          readOnly: true
+      volumes:
+      - name: edge-lb-secret
+        secret:
+                secretName: edge-lb-secret
+
+
+
+    

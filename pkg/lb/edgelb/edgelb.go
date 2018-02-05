@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"time"
 
@@ -40,13 +41,13 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 
 	// Read the creds from the secret store.
 	dat, err := ioutil.ReadFile(secrets)
-
 	if err != nil {
 		err = errors.New(fmt.Sprintf("Unable to get DC/OS service account credentials:%s", err))
 		return
 	}
 
 	dcosCredsStr := string(dat)
+	log.Printf("Retrieved the following encoded DC/OS credentials: %s", dcosCredsStr)
 
 	// Decode the DC/OS service account credentials from the JSON
 	dcosCreds := &dcos.AuthCreds{}
