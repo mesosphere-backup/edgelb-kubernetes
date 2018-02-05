@@ -85,15 +85,23 @@ func main() {
 	}
 
 	// Initialize Edge-LB.
-	edgelbBackend, err := edgelb.New("edge-lb", "https://leader.mesos", "")
+	// NOTE: You need to expose the DC/OS credentials for `edge-lb` as a base64 secret at the path `/dcos/secrets/edge-lb-secret.json`
+	edgelbBackend, err := edgelb.New("edgelb", "https://leader.mesos", "/dcos/secrets/edge-lb-secret.json")
+	if err != nil {
+		panic(err.Error())
+	}
+
+	log.Printf("Initialized the Edge-LB backend.")
 
 	// Initialize the load-balancer.
 	loadBalancer := lb.NewDefaultLoadBalancer(edgelbBackend)
+	log.Printf("Initialized the Default load-balancer.")
 
 	ctrl, err := ingress.NewController(clientset, loadBalancer)
 	if err != nil {
 		panic(err.Error())
 	}
+	log.Printf("Initialized the ingress controller.")
 
 	ctrl.Start()
 

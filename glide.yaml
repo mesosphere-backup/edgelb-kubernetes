@@ -1,9 +1,9 @@
 package: edgelb-k8s
 import:
 - package: k8s.io/client-go
-  version: v5.0.0
+  version: v6.0.0
 - package: k8s.io/kubernetes
-  version: v1.8.0
+  version: v1.9.0
   subpackages:
   - pkg/api
 - package: github.com/AsynkronIT/protoactor-go  
