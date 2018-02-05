@@ -230,8 +230,9 @@ var _ = framework.KubeDescribe("Security Context", func() {
 
 		listeningPort := ""
 		var l net.Listener
+		var err error
 		BeforeEach(func() {
-			l, err := net.Listen("tcp", ":0")
+			l, err = net.Listen("tcp", ":0")
 			if err != nil {
 				framework.Failf("Failed to open a new tcp port: %v", err)
 			}
@@ -340,7 +341,7 @@ var _ = framework.KubeDescribe("Security Context", func() {
 		createAndWaitUserPod := func(readOnlyRootFilesystem bool) string {
 			podName := fmt.Sprintf("busybox-readonly-%v-%s", readOnlyRootFilesystem, uuid.NewUUID())
 			podClient.Create(makeUserPod(podName,
-				imageutils.GetBusyBoxImage(),
+				"busybox",
 				[]string{"sh", "-c", "touch checkfile"},
 				readOnlyRootFilesystem,
 			))
@@ -384,7 +385,7 @@ var _ = framework.KubeDescribe("Security Context", func() {
 					RestartPolicy: v1.RestartPolicyNever,
 					Containers: []v1.Container{
 						{
-							Image: "gcr.io/google_containers/nonewprivs:1.2",
+							Image: imageutils.GetE2EImage(imageutils.Nonewprivs),
 							Name:  podName,
 							SecurityContext: &v1.SecurityContext{
 								AllowPrivilegeEscalation: allowPrivilegeEscalation,
