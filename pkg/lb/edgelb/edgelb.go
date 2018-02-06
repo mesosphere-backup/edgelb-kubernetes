@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"net/http"
+	"strings"
 	"time"
 
 	//logging library
@@ -15,6 +16,7 @@ import (
 
 	// DC/OS dependencies
 	"github.com/dcos/dcos-go/dcos/http/transport"
+	sdkClient "github.com/mesosphere/dcos-commons/cli/client"
 	"github.com/mesosphere/dcos-commons/cli/config"
 
 	// Edge-lb dependencies
@@ -29,6 +31,53 @@ import (
 // A client for `dcos-edge-lb` that implements the `lb.LoadBalancerBackend` interface.
 type EdgeLB struct {
 	mkClient func() (*edgelbOperations.Client, error)
+}
+
+// hasContentTypes returns true if any item in cts is included in resp, else returns false
+func hasContentTypes(resp *http.Response, cts []string) bool {
+	respCt := resp.Header.Get("Content-Type")
+	if respCt == "" {
+		respCt = "application/octet-stream"
+	}
+	for _, ct := range cts {
+		if strings.Contains(respCt, ct) {
+			return true
+		}
+	}
+	return false
+}
+
+// checkHTTPResponse wraps sdk's CheckHTTPResponse with content-type check
+func checkHTTPResponse(resp *http.Response) (*http.Response, error) {
+	// XXX: Need a better indicator for if a response is coming from edgelb or adminrouter
+	adminRouterContentTypes := []string{
+		"text/html",                // adminrouter auth
+		"application/octet-stream", // adminrouter service unavailable
+	}
+	if hasContentTypes(resp, adminRouterContentTypes) {
+		if _, err := sdkClient.CheckHTTPResponse(resp); err != nil {
+			return nil, err
+		}
+	}
+	return resp, nil
+}
+
+type EdgeLBRoundTripper struct {
+	rt http.RoundTripper
+}
+
+func (edgelbRT *EdgeLBRoundTripper) RoundTrip(req *http.Request) (resp *http.Response, err error) {
+	resp, err = edgelbRT.rt.RoundTrip(req)
+	log.Printf("Finished a round trip to edge-lb")
+
+	if err == nil {
+		log.Printf("Checking response from edge-lb")
+		return checkHTTPResponse(resp)
+	} else {
+		log.Printf("Edge LB round tripper errored out: %s", err)
+	}
+
+	return
 }
 
 func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
@@ -56,6 +105,8 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 		return
 	}
 
+	log.Printf("Decoded `dcosCreds`: %v", dcosCreds)
+
 	// Setup the client configuration.
 	httpClient := &http.Client{
 		Transport: &http.Transport{},
@@ -78,12 +129,30 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 	rt, err := transport.NewRoundTripper(httpClient.Transport, creds, expire)
 	if err != nil {
 		err = errors.New(fmt.Sprintf("Failed to create HTTP client with configured service account: %s", err))
+		return
 	}
 
 	mkClient := func() (elbOpsClient *edgelbOperations.Client, err error) {
-		elbOpsClient, err = edgelbClient.NewWithRoundTripper(rt)
+		elbOpsClient, err = edgelbClient.NewWithRoundTripper(&EdgeLBRoundTripper{rt: rt})
 		return
 	}
+
+	// Initiate a ping to the edge-lb server.
+	params := edgelbOperations.NewPingParams()
+
+	elbClient, err := mkClient()
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Failed to create an Edge-LB client to initiate a ping: %s", err))
+		return
+	}
+
+	resp, err := elbClient.Ping(params)
+	if err != nil {
+		err = errors.New(fmt.Sprintf("Failed to get a ping response from Edge-LB:%s", err))
+		return
+	}
+
+	log.Printf("Edge-lb responded:%s", resp.Payload)
 
 	// Setup the closure for creating edge-lb clients.
 	elb = &EdgeLB{mkClient: mkClient}
