@@ -30,6 +30,7 @@ import (
 
 // A client for `dcos-edge-lb` that implements the `lb.LoadBalancerBackend` interface.
 type EdgeLB struct {
+	k8sPool  *models.PoolContainer
 	mkClient func() (*edgelbOperations.Client, error)
 }
 
@@ -78,6 +79,55 @@ func (edgelbRT *EdgeLBRoundTripper) RoundTrip(req *http.Request) (resp *http.Res
 	}
 
 	return
+}
+
+func newK8sPool() *models.PoolContainer {
+	// Create the k8s edge-lb pool.
+	k8sPool := &models.PoolContainer{APIVersion: models.APIVersionV2, V2: &models.V2Pool{Name: "k8s"}}
+
+	var backends []*models.V2Backend
+	var frontEndMap []*models.V2FrontendLinkBackendMapItems0
+
+	frontEnd := models.V2FrontendLinkBackendMapItems0{
+		Backend: "dummy",
+		HostEq:  "k8s.edgelb",
+		PathBeg: "/"}
+
+	frontEndMap = append(frontEndMap, &frontEnd)
+
+	v2Backend := models.V2Backend{Name: "dummy"}
+	backends = append(backends, &v2Backend)
+
+	endpoint := models.V2Endpoint{Address: "127.0.0.1", Port: 443, Type: "ADDRESS"}
+
+	service := models.V2Service{Endpoint: &endpoint}
+	v2Backend.Services = append(v2Backend.Services, &service)
+	v2Backend.Protocol = models.V2ProtocolHTTP
+
+	// Setup the frontend for the pool
+	frontendLink := models.V2FrontendLinkBackend{
+		Map: frontEndMap,
+	}
+
+	bindPort := int32(8080)
+	frontend := models.V2Frontend{
+		BindPort:    &bindPort,
+		LinkBackend: &frontendLink,
+		Protocol:    models.V2ProtocolHTTP,
+	}
+
+	var frontends []*models.V2Frontend
+	frontends = append(frontends, &frontend)
+
+	haProxy := models.V2Haproxy{
+		Backends:  backends,
+		Frontends: frontends,
+	}
+
+	// Store the HAProxy config in the pool container.
+	k8sPool.V2.Haproxy = &haProxy
+
+	return k8sPool
 }
 
 func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
@@ -155,64 +205,21 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 	log.Printf("Edge-lb responded:%s", resp.Payload)
 
 	// Check if the `k8s` pool already exists?
-	k8sPool := false
+	k8sExists := false
+	k8sPool := newK8sPool()
+
 	poolParams := edgelbOperations.NewGetPoolContainerParams().
 		WithName("k8s")
 	_, err = elbClient.GetPoolContainer(poolParams)
 	if err == nil {
 		log.Printf("Found edge-lb pool for k8s: %v", resp.Payload)
-		k8sPool = true
+		k8sExists = true
 	}
 
-	if !k8sPool {
-		log.Printf("Could find default k8s pool. Atempting to create one ....")
-		// Create the k8s edge-lb pool.
-		poolContainer := models.PoolContainer{APIVersion: models.APIVersionV2, V2: &models.V2Pool{Name: "k8s"}}
-
-		var backends []*models.V2Backend
-		var frontEndMap []*models.V2FrontendLinkBackendMapItems0
-
-		frontEnd := models.V2FrontendLinkBackendMapItems0{
-			Backend: "dummy",
-			HostEq:  "k8s.edgelb",
-			PathBeg: "/"}
-
-		frontEndMap = append(frontEndMap, &frontEnd)
-
-		v2Backend := models.V2Backend{Name: "dummy"}
-		backends = append(backends, &v2Backend)
-
-		endpoint := models.V2Endpoint{Address: "127.0.0.1"}
-		endpoint.Port = 443
-
-		service := models.V2Service{Endpoint: &endpoint}
-		v2Backend.Services = append(v2Backend.Services, &service)
-		v2Backend.Protocol = models.V2ProtocolHTTP
-
-		// Setup the frontend for the pool
-		frontendLink := models.V2FrontendLinkBackend{
-			Map: frontEndMap,
-		}
-
-		bindPort := int32(8080)
-		frontend := models.V2Frontend{
-			BindPort:    &bindPort,
-			LinkBackend: &frontendLink,
-			Protocol:    models.V2ProtocolHTTP,
-		}
-
-		var frontends []*models.V2Frontend
-		frontends = append(frontends, &frontend)
-
-		haProxy := models.V2Haproxy{
-			Backends:  backends,
-			Frontends: frontends,
-		}
-
-		// Store the HAProxy config in the pool container.
-		poolContainer.V2.Haproxy = &haProxy
+	if !k8sExists {
+		log.Printf("Could not find default k8s pool. Atempting to create one ....")
 		params := edgelbOperations.NewV2CreatePoolParams().
-			WithPool(poolContainer.V2)
+			WithPool(k8sPool.V2)
 
 		_, err = elbClient.V2CreatePool(params)
 
@@ -220,10 +227,11 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 			err = errors.New(fmt.Sprintf("Failed to create k8s Edge-LB pool:%s", err))
 			return
 		}
+		log.Printf("Successfully created k8s pool.")
 	}
 
 	// Setup the closure for creating edge-lb clients.
-	elb = &EdgeLB{mkClient: mkClient}
+	elb = &EdgeLB{k8sPool: k8sPool, mkClient: mkClient}
 	return
 }
 
@@ -236,7 +244,11 @@ func (elb *EdgeLB) ConfigureVHost(vhost state.VHost) (err error) {
 	}
 
 	// Create an edge-lb specific pool config.
-	poolContainer := models.PoolContainer{APIVersion: models.APIVersionV2, Name: "k8s", V2: &models.V2Pool{}}
+	poolContainer := models.PoolContainer{
+		APIVersion: models.APIVersionV2,
+		Name:       "k8s",
+		V2:         &models.V2Pool{},
+	}
 
 	// Setup the backend for this pool.
 	var backends []*models.V2Backend
