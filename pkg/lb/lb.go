@@ -4,7 +4,7 @@ import (
 	"fmt"
 
 	// Edgelb-k8s packages
-	LBState "edgelb-k8s/pkg/lb/state"
+	"edgelb-k8s/pkg/lb/config"
 	"edgelb-k8s/pkg/state"
 )
 
@@ -17,18 +17,18 @@ type LoadBalancer interface {
 
 // The remote backend which is a physical representation of this LoadBalancer.
 type LoadBalancerBackend interface {
-	ConfigureVHost(vhost LBState.VHost) error
-	UnconfigureVHost(vhost LBState.VHost) error
+	ConfigureVHost(vhost config.VHost) error
+	UnconfigureVHost(vhost config.VHost) error
 }
 
 type DefaultLoadBalancer struct {
 	lbBackend LoadBalancerBackend
-	vhosts    map[string]LBState.VHost
+	vhosts    map[string]config.VHost
 }
 
 func NewDefaultLoadBalancer(lbBackend LoadBalancerBackend) (lb *DefaultLoadBalancer) {
 	lb = &DefaultLoadBalancer{
-		vhosts:    make(map[string]LBState.VHost),
+		vhosts:    make(map[string]config.VHost),
 		lbBackend: lbBackend,
 	}
 
@@ -46,7 +46,7 @@ func (lb *DefaultLoadBalancer) AddVHost(vhost state.VHost) (err error) {
 		return
 	}
 
-	lb.vhosts[vhost.Host] = *LBState.NewVHost(vhost.Host)
+	lb.vhosts[vhost.Host] = *config.NewVHost(vhost.Host)
 
 	return
 }
@@ -72,10 +72,11 @@ func (lb *DefaultLoadBalancer) ExposeService(vhost state.VHost, service state.Se
 	// Add endpoints from this service to the given VHost.
 	for _, url := range service.URLs {
 		if url.Host == lbVHost.Host {
-			route := LBState.Route{Path: url.Path}
+			route := config.Route{Path: url.Path}
+			service := &route.Service
 
 			for _, endpoint := range service.Endpoints {
-				route.Backends[endpoint.String()] = LBState.Backend{Address: endpoint.Address}
+				service.Endpoints = append(service.Endpoints, endpoint)
 			}
 			lbVHost.Routes[route.String()] = route
 
@@ -95,7 +96,7 @@ func (lb *DefaultLoadBalancer) RemoveService(vhost state.VHost, service state.Se
 		return
 	}
 
-	// Add endpoints from this service to the given VHost.
+	// Remove endpoints from this service to the given VHost.
 	for _, url := range service.URLs {
 		if url.Host == lbVHost.Host {
 			if _, ok := lbVHost.Routes[url.Path]; !ok {
