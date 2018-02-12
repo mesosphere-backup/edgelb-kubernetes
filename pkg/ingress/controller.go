@@ -1,6 +1,7 @@
 package ingress
 
 import (
+	"errors"
 	"fmt"
 	"log"
 	"reflect"
@@ -10,7 +11,6 @@ import (
 	"github.com/AsynkronIT/protoactor-go/actor"
 
 	// Ingress controller
-	"edgelb-k8s/pkg/lb"
 	"edgelb-k8s/pkg/state"
 
 	// RxGo
@@ -21,6 +21,7 @@ import (
 	// K8s
 	V1api "k8s.io/api/core/v1"
 	V1Beta1api "k8s.io/api/extensions/v1beta1"
+	"k8s.io/apimachinery/pkg/labels"
 	"k8s.io/apimachinery/pkg/util/wait"
 	"k8s.io/client-go/informers"
 	"k8s.io/client-go/kubernetes"
@@ -60,6 +61,8 @@ type ingressRuleMsg struct {
 	IngressRule V1Beta1api.IngressRule
 }
 
+type syncMsg struct{}
+
 // Used to add/del/update a `Host` on this controller.
 type hostMsg struct {
 	Op   Operation
@@ -80,11 +83,12 @@ type endpointMsg struct {
 }
 
 type Controller interface {
-	Start()
+	Start() error
 }
 
 type controller struct {
 	pid              *actor.PID // PID of the controller.
+	lb               *actor.PID // PID of the load-balancer.
 	si               informers.SharedInformerFactory
 	endpoints        v1.EndpointsLister        // All the endpoints that are availabe in a k8s cluster.
 	ingressResources v1beta1.IngressLister     // Ingress resource that define the config for the controller.
@@ -94,17 +98,15 @@ type controller struct {
 	ingressMsgs   chan interface{}
 	serviceMsgs   chan interface{}
 	endpointsMsgs chan interface{}
-
-	// Setup the load-balancer
-	loadBalancer lb.LoadBalancer
 }
 
-func NewController(clientset *kubernetes.Clientset, loadBalancer lb.LoadBalancer) (ctrl Controller, err error) {
+func NewController(clientset *kubernetes.Clientset, loadBalancer *actor.PID) (ctrl Controller) {
 	resyncPeriod := 30 * time.Minute
 	si := informers.NewSharedInformerFactory(clientset, resyncPeriod)
 
 	ingressCtrl := controller{
 		si:               si,
+		lb:               loadBalancer,
 		endpoints:        si.Core().V1().Endpoints().Lister(),
 		ingressResources: si.Extensions().V1beta1().Ingresses().Lister(),
 		services:         make(map[string]*state.Service),
@@ -112,94 +114,42 @@ func NewController(clientset *kubernetes.Clientset, loadBalancer lb.LoadBalancer
 		ingressMsgs:      make(chan interface{}),
 		serviceMsgs:      make(chan interface{}),
 		endpointsMsgs:    make(chan interface{}),
-		loadBalancer:     loadBalancer,
 	}
 
 	ctrl = &ingressCtrl
 
-	// Add watchers for endpoints.
-	log.Printf("Ingress controller setting up `v1.Endpoints` watchers...")
-	si.Core().V1().Endpoints().Informer().AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				log.Printf("Received an add event for `v1.Endpoints` resource")
-				ingressCtrl.endpointsMsgs <- k8sEndpointsMsg{
-					Op:        Operation{Op: ADD},
-					Endpoints: *(obj.(*V1api.Endpoints)),
-				}
-			},
-			DeleteFunc: func(obj interface{}) {
-				log.Printf("Received a delete event for `v1.Endpoints` resource")
-				ingressCtrl.endpointsMsgs <- k8sEndpointsMsg{
-					Op:        Operation{Op: DEL},
-					Endpoints: *(obj.(*V1api.Endpoints)),
-				}
-			},
-		},
-	)
-
-	// Add watchers for services.
-	log.Printf("Ingress controller setting up `v1.Services` watchers...")
-	si.Core().V1().Services().Informer().AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				log.Printf("Received an add event for `v1.Services` resource")
-				ingressCtrl.serviceMsgs <- k8sServiceMsg{
-					Op:      Operation{Op: ADD},
-					Service: *(obj.(*V1api.Service)),
-				}
-			},
-			UpdateFunc: func(old interface{}, new interface{}) {
-				log.Printf("Received an update event for `v1.Services` resource")
-				ingressCtrl.serviceMsgs <- k8sServiceMsg{
-					Op:      Operation{Op: UPDATE},
-					Service: *(new.(*V1api.Service)),
-				}
-			},
-			DeleteFunc: func(obj interface{}) {
-				log.Printf("Received a delete event for `v1.Services` resource")
-				ingressCtrl.serviceMsgs <- k8sServiceMsg{
-					Op:      Operation{Op: DEL},
-					Service: *(obj.(*V1api.Service)),
-				}
-			},
-		},
-	)
-
-	// Add watchers for ingress
-	log.Printf("Ingress controller setting up `v1.beta1.Ingress` watchers...")
-	si.Extensions().V1beta1().Ingresses().Informer().AddEventHandler(
-		cache.ResourceEventHandlerFuncs{
-			AddFunc: func(obj interface{}) {
-				log.Printf("Received an add event for `v1.beta1.Ingress` resource")
-				ingressCtrl.ingressMsgs <- k8sIngressMsg{
-					Op:      Operation{Op: ADD},
-					Ingress: *(obj.(*V1Beta1api.Ingress)),
-				}
-			},
-			UpdateFunc: func(old interface{}, new interface{}) {
-				log.Printf("Received an update event for `v1.beta1.Ingress` resource")
-				ingressCtrl.ingressMsgs <- k8sIngressMsg{
-					Op:      Operation{Op: UPDATE},
-					Ingress: *(new.(*V1Beta1api.Ingress)),
-				}
-			},
-			DeleteFunc: func(obj interface{}) {
-				log.Printf("Received a delete event for `v1.beta1.Ingress` resource")
-				ingressCtrl.ingressMsgs <- k8sIngressMsg{
-					Op:      Operation{Op: DEL},
-					Ingress: *(obj.(*V1Beta1api.Ingress)),
-				}
-			},
-		},
-	)
-
 	return
 }
 
-func (ctrl *controller) Start() {
+func (ctrl *controller) Start() (err error) {
 	// Store the PID and spawn the actor.
 	ctrl.pid = actor.Spawn(actor.FromInstance(ctrl))
+
+	// Start the k8s client.
+	ctrl.si.Start(wait.NeverStop)
+
+	endPointsCache := ctrl.si.Core().V1().Endpoints().Informer()
+	servicesCache := ctrl.si.Core().V1().Services().Informer()
+	ingressRulesCache := ctrl.si.Extensions().V1beta1().Ingresses().Informer()
+
+	// Now let's start the controller
+	syncCh := make(chan struct{})
+	defer close(syncCh)
+	if !cache.WaitForCacheSync(syncCh, endPointsCache.HasSynced, servicesCache.HasSynced, ingressRulesCache.HasSynced) {
+		err = errors.New("Timed out waiting for caches to sync")
+		return
+
+	}
+
+	// Sync done. Reconcile
+	err = ctrl.sync()
+	if err != nil {
+		return
+	}
+
+	// At this point we have learnt all the ingress rules that existed at the
+	// API server till this point. We need to send a message to the actor to
+	// start syncing these ingress rules with the load-balancer.
 
 	// Setup observers so that we can process the different k8s messages we are
 	// interested in.
@@ -218,6 +168,7 @@ func (ctrl *controller) Start() {
 				ctrl.pid.Tell(&msg)
 			}
 		},
+
 		// Register a handler for any emitted error.
 		ErrHandler: func(err error) {
 			log.Printf("Encountered error: %v\n", err)
@@ -248,9 +199,93 @@ func (ctrl *controller) Start() {
 	observable.From(k8sServiceSource).Subscribe(sink)
 	observable.From(k8sEndpointsSource).Subscribe(sink)
 
-	// Start the watchers.
-	ctrl.si.Start(wait.NeverStop)
+	// NOTE: Between the sync and the setting up of watchers for endpoints,
+	// services and ingress resourcess there is a time window in which an
+	// ingress resource is added which we will end up missing. We will need to
+	// revisit to try and determine how to reduce this window. Ofcourse any
+	// ingress resource that we miss, we can learn if the operator deletes it
+	// and recreates it.
+
+	// Add watchers for endpoints.
+	log.Printf("Ingress controller setting up `v1.Endpoints` watchers...")
+	ctrl.si.Core().V1().Endpoints().Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				log.Printf("Received an add event for `v1.Endpoints` resource")
+				ctrl.endpointsMsgs <- k8sEndpointsMsg{
+					Op:        Operation{Op: ADD},
+					Endpoints: *(obj.(*V1api.Endpoints)),
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				log.Printf("Received a delete event for `v1.Endpoints` resource")
+				ctrl.endpointsMsgs <- k8sEndpointsMsg{
+					Op:        Operation{Op: DEL},
+					Endpoints: *(obj.(*V1api.Endpoints)),
+				}
+			},
+		},
+	)
+
+	// Add watchers for services.
+	log.Printf("Ingress controller setting up `v1.Services` watchers...")
+	ctrl.si.Core().V1().Services().Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				log.Printf("Received an add event for `v1.Services` resource")
+				ctrl.serviceMsgs <- k8sServiceMsg{
+					Op:      Operation{Op: ADD},
+					Service: *(obj.(*V1api.Service)),
+				}
+			},
+			UpdateFunc: func(old interface{}, new interface{}) {
+				log.Printf("Received an update event for `v1.Services` resource")
+				ctrl.serviceMsgs <- k8sServiceMsg{
+					Op:      Operation{Op: UPDATE},
+					Service: *(new.(*V1api.Service)),
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				log.Printf("Received a delete event for `v1.Services` resource")
+				ctrl.serviceMsgs <- k8sServiceMsg{
+					Op:      Operation{Op: DEL},
+					Service: *(obj.(*V1api.Service)),
+				}
+			},
+		},
+	)
+
+	// Add watchers for ingress
+	log.Printf("Ingress controller setting up `v1.beta1.Ingress` watchers...")
+	ctrl.si.Extensions().V1beta1().Ingresses().Informer().AddEventHandler(
+		cache.ResourceEventHandlerFuncs{
+			AddFunc: func(obj interface{}) {
+				log.Printf("Received an add event for `v1.beta1.Ingress` resource")
+				ctrl.ingressMsgs <- k8sIngressMsg{
+					Op:      Operation{Op: ADD},
+					Ingress: *(obj.(*V1Beta1api.Ingress)),
+				}
+			},
+			UpdateFunc: func(old interface{}, new interface{}) {
+				log.Printf("Received an update event for `v1.beta1.Ingress` resource")
+				ctrl.ingressMsgs <- k8sIngressMsg{
+					Op:      Operation{Op: UPDATE},
+					Ingress: *(new.(*V1Beta1api.Ingress)),
+				}
+			},
+			DeleteFunc: func(obj interface{}) {
+				log.Printf("Received a delete event for `v1.beta1.Ingress` resource")
+				ctrl.ingressMsgs <- k8sIngressMsg{
+					Op:      Operation{Op: DEL},
+					Ingress: *(obj.(*V1Beta1api.Ingress)),
+				}
+			},
+		},
+	)
+
 	<-wait.NeverStop
+
+	return
 }
 
 func (ctrl *controller) Receive(ctx actor.Context) {
@@ -324,11 +359,34 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		case DEL:
 			log.Printf("Will delete host:%s from the load-balancer", hostMsg.Host)
 		default:
-			log.Printf("Undefined operation %d requested on `k8ServiceMsg/k8sEndpointsMsg`", operation)
+			log.Printf("Undefined operation %d requested on `hostMsg` handler", operation)
 		}
+	case *syncMsg:
+		// Inform the load-balancer about all the VHosts and their associated backends.
+
 	default:
 		log.Printf("Unsopported message received by ingress controller:%s", reflect.TypeOf(ctx.Message()))
 	}
+}
+
+// Walks through the cached list of ingress resources and builds the internal
+// state of `VHosts` and `service endpoints associated with the `VHosts`.
+func (ctrl *controller) sync() (err error) {
+	// Get all the ingress resources.
+	ingressResources, err := ctrl.ingressResources.List(labels.Everything())
+
+	if err != nil {
+		return
+	}
+
+	for _, ingressResource := range ingressResources {
+		// Process each of the ingress rule.
+		for _, ingressRule := range ingressResource.Spec.Rules {
+			ctrl.ingressRuleCreateAndUpdate(ingressResource.GetNamespace(), ingressRule)
+		}
+	}
+
+	return
 }
 
 func (ctrl *controller) endpointCreateUpdateAndDelete(obj interface{}) {

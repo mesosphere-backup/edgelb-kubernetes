@@ -22,8 +22,10 @@ import (
 
 	// Edgelb-k8s
 	"edgelb-k8s/pkg/ingress"
-	"edgelb-k8s/pkg/lb"
 	"edgelb-k8s/pkg/lb/edgelb"
+
+	// Actor
+	"github.com/AsynkronIT/protoactor-go/actor"
 
 	// k8s
 	"k8s.io/client-go/kubernetes"
@@ -93,17 +95,10 @@ func main() {
 
 	log.Printf("Initialized the Edge-LB backend.")
 
-	// Initialize the load-balancer.
-	loadBalancer := lb.NewDefaultLoadBalancer(edgelbBackend)
-	log.Printf("Initialized the Default load-balancer.")
-
-	ctrl, err := ingress.NewController(clientset, loadBalancer)
-	if err != nil {
-		panic(err.Error())
-	}
+	ctrl := ingress.NewController(clientset, actor.Spawn(actor.FromInstance(edgelbBackend)))
 	log.Printf("Initialized the ingress controller.")
 
-	ctrl.Start()
+	err = ctrl.Start()
 
 	log.Printf("Exiting the wait for K8s API server ....")
 }

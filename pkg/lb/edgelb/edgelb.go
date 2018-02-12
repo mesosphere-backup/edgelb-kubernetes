@@ -13,6 +13,9 @@ import (
 	"strings"
 	"time"
 
+	// Actor
+	"github.com/AsynkronIT/protoactor-go/actor"
+
 	//logging library
 	"github.com/Sirupsen/logrus"
 
@@ -23,6 +26,7 @@ import (
 
 	// Edge-lb dependencies
 	"edgelb-k8s/pkg/lb/config"
+	"edgelb-k8s/pkg/lb/messages"
 	edgelbOperations "github.com/mesosphere/dcos-edge-lb/apiserver/client/operations"
 	"github.com/mesosphere/dcos-edge-lb/apiserver/dcos"
 	"github.com/mesosphere/dcos-edge-lb/apiserver/models"
@@ -172,19 +176,24 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 	// Check if the `k8s` pool already exists?
 	k8sExists := false
 
+	// We always initialize the k8s edge-lb pool to the default values
+	// even if the pool and its config exist in the Edge-LB API server. This is
+	// because during initialization, the controller will inform all the
+	// ingress resources that exist in the k8s API server, with which we will
+	// end up generating a new config and will simply over-write the existing
+	// configuration for the k8s pool in the API server.
+	k8sPool := elb.newK8sPool()
+
 	poolParams := edgelbOperations.NewGetPoolContainerParams().
 		WithName("k8s")
-	respPool, err := elbClient.GetPoolContainer(poolParams)
+	_, err = elbClient.GetPoolContainer(poolParams)
 	if err == nil {
 		log.Printf("Found edge-lb pool for k8s: %v", resp.Payload)
 		k8sExists = true
-	} else {
-		elb.k8sPool = respPool.Payload
 	}
 
 	if !k8sExists {
 		// The k8s pool does not exist so go ahead and create it.
-		k8sPool := elb.newK8sPool()
 		log.Printf("Could not find default k8s pool. Atempting to create one ....")
 		params := edgelbOperations.NewV2CreatePoolParams().
 			WithPool(k8sPool.V2)
@@ -218,6 +227,26 @@ func getBackendID(vhost *config.VHost, route *config.Route) string {
 // maintaining duplicate information about the backends.
 func getFrontendID(vhost *config.VHost, route *config.Route) string {
 	return getBackendID(vhost, route)
+}
+
+func (elb *EdgeLB) Receive(ctx actor.Context) {
+	switch ctx.Message().(type) {
+	case *messages.SyncMsg:
+		elb.sync()
+		log.Printf("Syncing with the edgelb API server.")
+	case *messages.ConfigVHostsMsg:
+		configVHostsMsg, _ := ctx.Message().(*messages.ConfigVHostsMsg)
+		log.Printf("Configuring VHosts in the k8s pool.")
+		for _, vhost := range configVHostsMsg.VHosts {
+			elb.configureVHost(vhost)
+		}
+	case *messages.ConfigVHostMsg:
+		configVHostMsg, _ := ctx.Message().(*messages.ConfigVHostMsg)
+		log.Printf("Configuring a VHost as part of the k8s pool.")
+		elb.configureVHost(configVHostMsg.VHost)
+	default:
+		log.Printf("Undefined operation requested on EdgeLB backend")
+	}
 }
 
 func (elb *EdgeLB) addBackendToPool(vhost *config.VHost, route *config.Route) *models.V2Backend {
@@ -323,15 +352,7 @@ func (elb *EdgeLB) newK8sPool() *models.PoolContainer {
 	return k8sPool
 }
 
-func (elb *EdgeLB) ConfigureVHost(vhost config.VHost) (err error) {
-	// Create the edge-LB client.
-	elbClient, err := elb.mkClient()
-	if err != nil {
-		return
-	}
-
-	// Create an edge-lb specific pool config.
-	poolContainer := elb.k8sPool
+func (elb *EdgeLB) configureVHost(vhost config.VHost) (err error) {
 
 	// Create a backend for each route supported by the VHost.
 	for _, route := range vhost.Routes {
@@ -367,14 +388,31 @@ func (elb *EdgeLB) ConfigureVHost(vhost config.VHost) (err error) {
 		}
 	}
 
+	return
+}
+
+func (elb *EdgeLB) unconfigureVHost(vhost config.VHost) (err error) {
+	return errors.New("Operation not supported")
+}
+
+func (elb *EdgeLB) sync() {
+	// Create the edge-LB client.
+	elbClient, err := elb.mkClient()
+	if err != nil {
+		log.Fatalf("Unable to create the edge-lb client during 'sync':%s", err)
+		return
+	}
+
+	// Create an edge-lb specific pool config.
+	poolContainer := elb.k8sPool
 	params := edgelbOperations.NewV2UpdatePoolParams().
 		WithPool(poolContainer.V2)
 
 	_, err = elbClient.V2UpdatePool(params)
 
-	return
-}
+	if err != nil {
+		log.Fatalf("Unable to update the edge-lb pool during 'sync':%s", err)
+	}
 
-func (elb *EdgeLB) UnconfigureVHost(vhost config.VHost) (err error) {
-	return errors.New("Operation not supported")
+	return
 }
