@@ -11,6 +11,8 @@ import (
 	"github.com/AsynkronIT/protoactor-go/actor"
 
 	// Ingress controller
+	"edgelb-k8s/pkg/lb/config"
+	"edgelb-k8s/pkg/lb/messages"
 	"edgelb-k8s/pkg/state"
 
 	// RxGo
@@ -313,10 +315,19 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 			ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, Host: host})
 		case DEL:
 			log.Printf("Received a DEL `*ingressRuleMsg.")
-			host := ctrl.ingressRuleDeleted(ingressRuleMsg.Namespace, ingressRuleMsg.IngressRule)
-			// Tell the controller to delete this host.
-			log.Printf("Need to DEL host:%s from load-balancer.", host)
-			ctrl.pid.Tell(&hostMsg{Op: Operation{Op: DEL}, Host: host})
+			log.Printf("Need to DEL host:%s from load-balancer.", ingressRuleMsg.IngressRule.Host)
+			err := ctrl.ingressRuleDeleted(ingressRuleMsg.Namespace, ingressRuleMsg.IngressRule)
+			if err != nil {
+				log.Printf("Could not delete the VHost:%s", err)
+			} else {
+				// Inform the load-balancer about all the VHosts and their associated backends.
+				configVHostsMsg := ctrl.genConfigVHosts()
+				// Add the configuration to the load-balancer.
+				ctrl.lb.Tell(messages.RemoveVHostMsg{VHosts: configVHostsMsg.VHosts})
+
+				// Ask the load-balancer to sync.
+				ctrl.lb.Tell(messages.SyncMsg{})
+			}
 		default:
 			log.Printf("Undefined operation %d requested on `IngressRuleMsg`", operation)
 		}
@@ -346,7 +357,7 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 			hosts := ctrl.deleteService(id)
 			for _, host := range hosts {
 				// Tell the controller to delete this host.
-				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: DEL}, Host: host})
+				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: UPDATE}, Host: host})
 			}
 		default:
 			log.Printf("Undefined operation %d requested on `k8ServiceMsg/k8sEndpointsMsg`", op)
@@ -356,6 +367,16 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		switch operation := hostMsg.Op.Op; operation {
 		case ADD, UPDATE:
 			log.Printf("Will send update for host:%s to the load-balancer", hostMsg.Host)
+			if vhost, ok := ctrl.vhosts[hostMsg.Host]; ok {
+				configVHostMsg := ctrl.genConfigVHost(vhost)
+				// Add the VHost to the load-balancer config.
+				ctrl.lb.Tell(configVHostMsg)
+
+				// Ask the load-balancer to sync.
+				ctrl.lb.Tell(messages.SyncMsg{})
+			} else {
+				log.Printf("Cannot ADD/UPDATE VHost on the load-balancer, since the VHost does not exist !!")
+			}
 		case DEL:
 			log.Printf("Will delete host:%s from the load-balancer", hostMsg.Host)
 		default:
@@ -363,6 +384,11 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		}
 	case *syncMsg:
 		// Inform the load-balancer about all the VHosts and their associated backends.
+		configVHostsMsg := ctrl.genConfigVHosts()
+		// Add the configuration to the load-balancer.
+		ctrl.lb.Tell(configVHostsMsg)
+		// Ask the load-balancer to sync.
+		ctrl.lb.Tell(messages.SyncMsg{})
 
 	default:
 		log.Printf("Unsopported message received by ingress controller:%s", reflect.TypeOf(ctx.Message()))
@@ -501,12 +527,13 @@ func (ctrl *controller) ingressRuleCreateAndUpdate(namespace string, rule V1Beta
 
 // Delete a `Vhost` based on an IngressRule.
 // Returns the `host` that got deleted.
-func (ctrl *controller) ingressRuleDeleted(namespace string, rule V1Beta1api.IngressRule) (host string) {
-	host = rule.Host
-
+func (ctrl *controller) ingressRuleDeleted(namespace string, rule V1Beta1api.IngressRule) (err error) {
 	// If a VHost already exists delete it since we will be re-creating it here.
 	if _, ok := ctrl.vhosts[rule.Host]; ok {
 		delete(ctrl.vhosts, rule.Host)
+	} else {
+		err = errors.New(fmt.Sprintf("Couldn't find a VHost corresponding to %s:", rule.Host))
+		return
 	}
 
 	for _, path := range rule.HTTP.Paths {
@@ -570,6 +597,37 @@ func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []str
 
 	for vhost, _ := range service.URLs {
 		host = append(host, vhost)
+	}
+
+	return
+}
+
+func (ctrl *controller) genConfigVHost(vhost *state.VHost) messages.ConfigVHostMsg {
+	lbVHost := config.VHost{Host: vhost.Host}
+	for _, route := range vhost.Routes {
+		if service, ok := ctrl.services[route.ServiceName.String()]; ok {
+			backend := config.Backend{}
+			for _, endpoint := range service.Endpoints {
+				backend.Endpoints = append(backend.Endpoints, endpoint.Address)
+			}
+
+			lbRoute := config.Route{
+				Path:    route.Path,
+				Service: backend}
+
+			// Add the route to the VHost config.
+			lbVHost.Routes[lbRoute.String()] = lbRoute
+		}
+	}
+
+	return messages.ConfigVHostMsg{VHost: lbVHost}
+}
+
+func (ctrl *controller) genConfigVHosts() (configVHosts messages.ConfigVHostsMsg) {
+	// Walk through all the VHosts and generate a VHosts config.
+	for _, vhost := range ctrl.vhosts {
+		// Add the newly created VHost to the config.
+		configVHosts.VHosts = append(configVHosts.VHosts, ctrl.genConfigVHost(vhost).VHost)
 	}
 
 	return

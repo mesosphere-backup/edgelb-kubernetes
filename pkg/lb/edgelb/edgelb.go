@@ -149,7 +149,11 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 	}
 
 	// Setup the closure for creating edge-lb clients.
-	elb = &EdgeLB{mkClient: mkClient}
+	elb = &EdgeLB{
+		mkClient:  mkClient,
+		frontends: make(map[string]*models.V2FrontendLinkBackendMapItems0),
+		backends:  make(map[string]*models.V2Backend),
+		ingress:   make(map[string]*models.V2Frontend)}
 
 	// During initialization we want to make sure that this backend to talk to
 	// the Edge-LB API server. We will also need to make sure that a k8s pool
@@ -234,6 +238,15 @@ func (elb *EdgeLB) Receive(ctx actor.Context) {
 	case *messages.SyncMsg:
 		elb.sync()
 		log.Printf("Syncing with the edgelb API server.")
+	case *messages.RemoveVHostMsg:
+		removeVHostMsg, _ := ctx.Message().(*messages.RemoveVHostMsg)
+		// Reset the Edge-LB configuration.
+		elb.reset()
+
+		log.Printf("Re-configuring VHosts in the k8s pool.")
+		for _, vhost := range removeVHostMsg.VHosts {
+			elb.configureVHost(vhost)
+		}
 	case *messages.ConfigVHostsMsg:
 		configVHostsMsg, _ := ctx.Message().(*messages.ConfigVHostsMsg)
 		log.Printf("Configuring VHosts in the k8s pool.")
@@ -247,6 +260,13 @@ func (elb *EdgeLB) Receive(ctx actor.Context) {
 	default:
 		log.Printf("Undefined operation requested on EdgeLB backend")
 	}
+}
+
+func (elb *EdgeLB) reset() {
+	elb.newK8sPool()
+	elb.frontends = make(map[string]*models.V2FrontendLinkBackendMapItems0)
+	elb.backends = make(map[string]*models.V2Backend)
+	elb.ingress = make(map[string]*models.V2Frontend)
 }
 
 func (elb *EdgeLB) addBackendToPool(vhost *config.VHost, route *config.Route) *models.V2Backend {
@@ -389,10 +409,6 @@ func (elb *EdgeLB) configureVHost(vhost config.VHost) (err error) {
 	}
 
 	return
-}
-
-func (elb *EdgeLB) unconfigureVHost(vhost config.VHost) (err error) {
-	return errors.New("Operation not supported")
 }
 
 func (elb *EdgeLB) sync() {
