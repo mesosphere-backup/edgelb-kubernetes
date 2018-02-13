@@ -127,21 +127,24 @@ func (ctrl *controller) Start() (err error) {
 	// Store the PID and spawn the actor.
 	ctrl.pid = actor.Spawn(actor.FromInstance(ctrl))
 
-	// Start the k8s client.
-	ctrl.si.Start(wait.NeverStop)
-
 	endPointsCache := ctrl.si.Core().V1().Endpoints().Informer()
 	servicesCache := ctrl.si.Core().V1().Services().Informer()
 	ingressRulesCache := ctrl.si.Extensions().V1beta1().Ingresses().Informer()
 
+	log.Printf("Starting the kubernetes client...")
+	// Start the k8s client.
+	ctrl.si.Start(wait.NeverStop)
+
 	// Now let's start the controller
 	syncCh := make(chan struct{})
 	defer close(syncCh)
+	log.Printf("Waiting for the kubernetes client sync ...")
 	if !cache.WaitForCacheSync(syncCh, endPointsCache.HasSynced, servicesCache.HasSynced, ingressRulesCache.HasSynced) {
 		err = errors.New("Timed out waiting for caches to sync")
 		return
 
 	}
+	log.Printf("Kubernetes client  sync completed !!")
 
 	// Sync done. Reconcile
 	err = ctrl.sync()

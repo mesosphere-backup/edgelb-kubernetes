@@ -258,7 +258,7 @@ func (elb *EdgeLB) Receive(ctx actor.Context) {
 		log.Printf("Configuring a VHost as part of the k8s pool.")
 		elb.configureVHost(configVHostMsg.VHost)
 	default:
-		log.Printf("Undefined operation requested on EdgeLB backend")
+		log.Printf("Undefined message type for EdgeLB backend: %T", ctx.Message())
 	}
 }
 
