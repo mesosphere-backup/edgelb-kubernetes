@@ -67,8 +67,8 @@ type syncMsg struct{}
 
 // Used to add/del/update a `Host` on this controller.
 type hostMsg struct {
-	Op   Operation
-	Host string
+	Op    Operation
+	VHost state.VHost
 }
 
 // Used to add/del/update a `state.Service` on this controller.
@@ -299,10 +299,10 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		ingressMsg, _ := ctx.Message().(*k8sIngressMsg)
 		switch operation := ingressMsg.Op.Op; operation {
 		case ADD, UPDATE:
-			log.Printf("Received an ADD/UPDATE `*k8sIngressMsg.")
+			log.Printf("Received an ADD/UPDATE `*k8sIngressMsg`.")
 			ctrl.ingressCreateAndUpdate(ingressMsg.Ingress)
 		case DEL:
-			log.Printf("Received a DEL `*k8sIngressMsg.")
+			log.Printf("Received a DEL `*k8sIngressMsg`.")
 			ctrl.ingressDeleted(ingressMsg.Ingress)
 		default:
 			log.Printf("Undefined operation %d requested on `k8sIngressMsg`", operation)
@@ -312,10 +312,10 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		switch operation := ingressRuleMsg.Op.Op; operation {
 		case ADD, UPDATE:
 			log.Printf("Received an ADD/UPDATE `*ingressRuleMsg.")
-			host := ctrl.ingressRuleCreateAndUpdate(ingressRuleMsg.Namespace, ingressRuleMsg.IngressRule)
-			log.Printf("Need to ADD/UPDATE host:%s on load-balancer.", host)
+			vhost := ctrl.ingressRuleCreateAndUpdate(ingressRuleMsg.Namespace, ingressRuleMsg.IngressRule)
+			log.Printf("Need to ADD/UPDATE host:%s on load-balancer.", vhost)
 			// Tell the controller to process this host.
-			ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, Host: host})
+			ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, VHost: vhost})
 		case DEL:
 			log.Printf("Received a DEL `*ingressRuleMsg.")
 			log.Printf("Need to DEL host:%s from load-balancer.", ingressRuleMsg.IngressRule.Host)
@@ -326,10 +326,10 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 				// Inform the load-balancer about all the VHosts and their associated backends.
 				configVHostsMsg := ctrl.genConfigVHosts()
 				// Add the configuration to the load-balancer.
-				ctrl.lb.Tell(messages.RemoveVHostMsg{VHosts: configVHostsMsg.VHosts})
+				ctrl.lb.Tell(&messages.RemoveVHostMsg{VHosts: configVHostsMsg.VHosts})
 
 				// Ask the load-balancer to sync.
-				ctrl.lb.Tell(messages.SyncMsg{})
+				ctrl.lb.Tell(&messages.SyncMsg{})
 			}
 		default:
 			log.Printf("Undefined operation %d requested on `IngressRuleMsg`", operation)
@@ -350,17 +350,10 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		switch op.Op {
 		case ADD, UPDATE:
 			log.Printf("Received an ADD/UPDATE `*k8sServiceMsg for:%s", id)
-			hosts := ctrl.updateServiceEndpoints(id)
-			for _, host := range hosts {
+			vhosts := ctrl.updateServiceEndpoints(id)
+			for _, vhost := range vhosts {
 				// Tell the controller to process this host.
-				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, Host: host})
-			}
-		case DEL:
-			log.Printf("Received a DEL `*k8sServiceMsg for:%s", id)
-			hosts := ctrl.deleteService(id)
-			for _, host := range hosts {
-				// Tell the controller to delete this host.
-				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: UPDATE}, Host: host})
+				ctrl.pid.Tell(&hostMsg{Op: Operation{Op: ADD}, VHost: vhost})
 			}
 		default:
 			log.Printf("Undefined operation %d requested on `k8ServiceMsg/k8sEndpointsMsg`", op)
@@ -369,29 +362,28 @@ func (ctrl *controller) Receive(ctx actor.Context) {
 		hostMsg, _ := ctx.Message().(*hostMsg)
 		switch operation := hostMsg.Op.Op; operation {
 		case ADD, UPDATE:
-			log.Printf("Will send update for host:%s to the load-balancer", hostMsg.Host)
-			if vhost, ok := ctrl.vhosts[hostMsg.Host]; ok {
-				configVHostMsg := ctrl.genConfigVHost(vhost)
-				// Add the VHost to the load-balancer config.
-				ctrl.lb.Tell(configVHostMsg)
+			log.Printf("Will send update for host:%s to the load-balancer", hostMsg.VHost)
+			configVHostMsg := ctrl.genConfigVHost(&hostMsg.VHost)
+			// Add the VHost to the load-balancer config.
+			ctrl.lb.Tell(&configVHostMsg)
 
-				// Ask the load-balancer to sync.
-				ctrl.lb.Tell(messages.SyncMsg{})
-			} else {
-				log.Printf("Cannot ADD/UPDATE VHost on the load-balancer, since the VHost does not exist !!")
-			}
+			// Ask the load-balancer to sync.
+			ctrl.lb.Tell(&messages.SyncMsg{})
 		case DEL:
-			log.Printf("Will delete host:%s from the load-balancer", hostMsg.Host)
+			log.Printf("Will delete host:%s from the load-balancer", hostMsg.VHost)
 		default:
 			log.Printf("Undefined operation %d requested on `hostMsg` handler", operation)
 		}
 	case *syncMsg:
+		log.Printf("Controller complete cache sync. Generating full config....")
 		// Inform the load-balancer about all the VHosts and their associated backends.
 		configVHostsMsg := ctrl.genConfigVHosts()
 		// Add the configuration to the load-balancer.
-		ctrl.lb.Tell(configVHostsMsg)
+		log.Printf("Sending full config to load-balancer....")
+		ctrl.lb.Tell(&configVHostsMsg)
 		// Ask the load-balancer to sync.
-		ctrl.lb.Tell(messages.SyncMsg{})
+		log.Printf("Asking load-balancer to sync with backend.")
+		ctrl.lb.Tell(&messages.SyncMsg{})
 
 	default:
 		log.Printf("Unsopported message received by ingress controller:%s", reflect.TypeOf(ctx.Message()))
@@ -460,24 +452,24 @@ func (ctrl *controller) serviceCreateUpdateAndDelete(obj interface{}, Op Operati
 func (ctrl *controller) ingressCreateAndUpdate(ingress V1Beta1api.Ingress) {
 	namespace := ingress.GetNamespace()
 
-	it, _ := iterable.New(ingress.Spec.Rules)
+	log.Printf("About to process total of %d ingress rules.", len(ingress.Spec.Rules))
 
-	// Process all the rules.
-	observable.From(it).Subscribe(observer.Observer{
-		// For every VHost that we get, register it with the load-balancer.
-		NextHandler: func(item interface{}) {
-			ingressRule := item.(*V1Beta1api.IngressRule)
-			// Ask the controller to process this rule.
-			ctrl.pid.Tell(&ingressRuleMsg{
-				Op:          Operation{Op: ADD},
-				Namespace:   namespace,
-				IngressRule: *ingressRule})
-		},
-	})
+	for _, ingressRule := range ingress.Spec.Rules {
+		log.Printf("Processing ingress rule %v:", ingressRule)
+
+		// Ask the controller to process this rule.
+		ctrl.pid.Tell(&ingressRuleMsg{
+			Op:          Operation{Op: ADD},
+			Namespace:   namespace,
+			IngressRule: ingressRule})
+	}
+
 }
 
 func (ctrl *controller) ingressDeleted(ingress V1Beta1api.Ingress) {
 	it, _ := iterable.New(ingress.Spec.Rules)
+
+	log.Printf("About to process %d ingress rules", len(ingress.Spec.Rules))
 
 	// Process all the rules.
 	observable.From(it).Subscribe(observer.Observer{
@@ -495,13 +487,14 @@ func (ctrl *controller) ingressDeleted(ingress V1Beta1api.Ingress) {
 
 // Create a `VHost` based on an `IngressRule`.
 // Returns the host added/deleted in this updated.
-func (ctrl *controller) ingressRuleCreateAndUpdate(namespace string, rule V1Beta1api.IngressRule) (host string) {
+func (ctrl *controller) ingressRuleCreateAndUpdate(namespace string, rule V1Beta1api.IngressRule) (vhost state.VHost) {
 	// If a VHost already exists delete it since we will be re-creating it here.
 	if _, ok := ctrl.vhosts[rule.Host]; ok {
 		delete(ctrl.vhosts, rule.Host)
 	}
 
-	vhost := &state.VHost{Host: rule.Host}
+	vhost = *state.NewVHost(rule.Host)
+	log.Printf("Adding vhost:%s in the ingress controller.", vhost)
 
 	for _, path := range rule.HTTP.Paths {
 		url := state.URL{Host: rule.Host, Path: path.Path}
@@ -509,9 +502,10 @@ func (ctrl *controller) ingressRuleCreateAndUpdate(namespace string, rule V1Beta
 
 		// Store the association of the service with the URI
 		if _, ok := ctrl.services[id.String()]; !ok {
-			ctrl.services[id.String()] = &state.Service{ServiceName: id}
+			ctrl.services[id.String()] = state.NewService(id)
 		}
 
+		log.Printf("Exposing service %s through URL:%s", id, url)
 		ctrl.services[id.String()].URLs[url.String()] = url
 
 		ctrl.updateServiceEndpoints(id)
@@ -519,11 +513,10 @@ func (ctrl *controller) ingressRuleCreateAndUpdate(namespace string, rule V1Beta
 		// Append the route to the VHost.
 		route := state.Route{Path: url.Path, ServiceName: id}
 		vhost.Routes[route.String()] = route
+		log.Printf("Adding route:%s to vhost:%s in the ingress controller.", route, vhost)
 	}
 
-	ctrl.vhosts[vhost.Host] = vhost
-
-	host = vhost.Host
+	ctrl.vhosts[vhost.Host] = &vhost
 
 	return
 }
@@ -554,7 +547,7 @@ func (ctrl *controller) ingressRuleDeleted(namespace string, rule V1Beta1api.Ing
 
 // Takes a `Service` and updates the endpoints of the service.
 // Returns the affected vhosts.
-func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []string) {
+func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []state.VHost) {
 	service, ok := ctrl.services[id.String()]
 
 	if !ok {
@@ -563,33 +556,37 @@ func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []str
 		return
 	}
 
+	log.Printf("Found a service(%s) that is part of an ingress reousrce, proceeding to add endpoints....", id)
+
 	// Since we might actually be adding/removing existing endpoints to the service,
 	// remove the existing endpoints from the service before adding new ones.
 	service.Endpoints = nil
 
 	// Look at the service name, and get the corresponding endpoints for this service name.
 	endpoints, err := ctrl.endpoints.Endpoints(service.Namespace).Get(service.Name)
-	if err != nil {
+	if err == nil {
 		for _, endpoint := range endpoints.Subsets {
 			for _, address := range endpoint.Addresses {
 				for _, port := range endpoint.Ports {
-					service.Endpoints = append(
-						service.Endpoints,
-						state.Endpoint{
-							ServiceName: id,
-							Address:     fmt.Sprintf("%s:%d", address.IP, port.Port),
-						})
+					backend := state.Endpoint{
+						ServiceName: id,
+						Address:     fmt.Sprintf("%s:%d", address.IP, port.Port),
+					}
+					service.Endpoints = append(service.Endpoints, backend)
+					log.Printf("Adding endpoint %s to service %s ", backend, id)
 				}
 			}
 
 			for _, address := range endpoint.NotReadyAddresses {
 				for _, port := range endpoint.Ports {
+					backend := state.Endpoint{
+						ServiceName: id,
+						Address:     fmt.Sprintf("%s:%d", address.IP, port.Port),
+					}
 					service.Endpoints = append(
 						service.Endpoints,
-						state.Endpoint{
-							ServiceName: id,
-							Address:     fmt.Sprintf("%s:%d", address.IP, port.Port),
-						})
+						backend)
+					log.Printf("Adding not ready endpoint %s to service %s ", backend, id)
 				}
 			}
 
@@ -598,15 +595,18 @@ func (ctrl *controller) updateServiceEndpoints(id state.ServiceName) (host []str
 		log.Printf("Unable to retrieve the endpoints for service:%s, error:%s", *service, err)
 	}
 
-	for vhost, _ := range service.URLs {
-		host = append(host, vhost)
+	for _, url := range service.URLs {
+		if vhost, ok := ctrl.vhosts[url.Host]; ok {
+			log.Printf("Service %s is exposed via URL %s ", id, url)
+			host = append(host, *vhost)
+		}
 	}
 
 	return
 }
 
 func (ctrl *controller) genConfigVHost(vhost *state.VHost) messages.ConfigVHostMsg {
-	lbVHost := config.VHost{Host: vhost.Host}
+	lbVHost := config.NewVHost(vhost.Host)
 	for _, route := range vhost.Routes {
 		if service, ok := ctrl.services[route.ServiceName.String()]; ok {
 			backend := config.Backend{}
@@ -623,7 +623,7 @@ func (ctrl *controller) genConfigVHost(vhost *state.VHost) messages.ConfigVHostM
 		}
 	}
 
-	return messages.ConfigVHostMsg{VHost: lbVHost}
+	return messages.ConfigVHostMsg{VHost: *lbVHost}
 }
 
 func (ctrl *controller) genConfigVHosts() (configVHosts messages.ConfigVHostsMsg) {

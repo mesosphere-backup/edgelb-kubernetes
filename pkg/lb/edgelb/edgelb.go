@@ -277,7 +277,8 @@ func (elb *EdgeLB) addBackendToPool(vhost *config.VHost, route *config.Route) *m
 
 	// New `backend`.
 	backend = &models.V2Backend{
-		Name: getBackendID(vhost, route),
+		Name:     getBackendID(vhost, route),
+		Protocol: models.V2ProtocolHTTP,
 	}
 
 	// Keep track of it in Edge-LB.
@@ -377,6 +378,8 @@ func (elb *EdgeLB) configureVHost(vhost config.VHost) (err error) {
 	// Create a backend for each route supported by the VHost.
 	for _, route := range vhost.Routes {
 		backend := elb.addBackendToPool(&vhost, &route)
+		// Reset the backend services since we are going to learn them all over here.
+		backend.Services = nil
 
 		// Make sure to add the frontend for this backend.
 		elb.addFrontendToPool(backend, &vhost, &route)
@@ -422,6 +425,7 @@ func (elb *EdgeLB) sync() {
 	// Create an edge-lb specific pool config.
 	poolContainer := elb.k8sPool
 	params := edgelbOperations.NewV2UpdatePoolParams().
+		WithName(poolContainer.V2.Name).
 		WithPool(poolContainer.V2)
 
 	_, err = elbClient.V2UpdatePool(params)

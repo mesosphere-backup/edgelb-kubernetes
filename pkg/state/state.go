@@ -36,12 +36,34 @@ type Route struct {
 	ServiceName // The service associated with this Route.
 }
 
+func NewVHost(host string) (vhost *VHost) {
+	vhost = &VHost{
+		Host:   host,
+		Routes: make(map[string]Route),
+	}
+
+	return
+}
+
+func NewService(id ServiceName) (service *Service) {
+	service = &Service{
+		ServiceName: id,
+		Endpoints:   make([]Endpoint, 0),
+		URLs:        make(map[string]URL),
+	}
+	return
+}
+
+func (vhost VHost) String() string {
+	return vhost.Host
+}
+
 func (service ServiceName) String() string {
-	return fmt.Sprintf("%s%s", service.Namespace, service.Name)
+	return fmt.Sprintf("%s/%s", service.Namespace, service.Name)
 }
 
 func (url URL) String() string {
-	return fmt.Sprintf("%s%s", url.Host, url.Path)
+	return fmt.Sprintf("%s/%s", url.Host, url.Path)
 }
 
 func (route Route) String() string {
