@@ -31,6 +31,8 @@ Using the above model both the ingress controller ad the edge-lb backend are act
 * Support API for accessing DC/OS secrets and storing ingress TLS in DC/OS secrets.
 * Support ingress resource meta-data to allow pools to bind to different interfaces/ports.
 * Support for Kubernetes `ConfigMap` resource in order to support user-defined configuration at startup.
+* Unit tests for the golang packages.
+* E2E to test against an edge-lb cluster.
 
 # Open questions 
 * Do we run the `edgelb-k8s` controller as Kubernetes pod or DC/OS pod?
