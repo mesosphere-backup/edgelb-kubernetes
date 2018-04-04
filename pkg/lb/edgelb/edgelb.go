@@ -44,8 +44,8 @@ import (
 	"github.com/mesosphere/dcos-edge-lb/apiserver/util"
 	edgelbClient "github.com/mesosphere/dcos-edge-lb/framework/edgelb/cli/dcos-edgelb/client"
 
-	"github.com/mesosphere/edgelb-k8s/pkg/lb/config"
-	"github.com/mesosphere/edgelb-k8s/pkg/lb/messages"
+	"github.com/mesosphere/edgelb-kubernetes/pkg/lb/config"
+	"github.com/mesosphere/edgelb-kubernetes/pkg/lb/messages"
 )
 
 // A client for `dcos-edge-lb` that implements the `lb.LoadBalancerBackend` interface.
