@@ -1,7 +1,7 @@
 package messages
 
 import (
-	"edgelb-k8s/pkg/lb/config"
+	"github.com/mesosphere/edgelb-k8s/pkg/lb/config"
 )
 
 type SyncMsg struct{}

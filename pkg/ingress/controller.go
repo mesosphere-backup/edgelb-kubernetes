@@ -11,9 +11,9 @@ import (
 	"github.com/AsynkronIT/protoactor-go/actor"
 
 	// Ingress controller
-	"edgelb-k8s/pkg/lb/config"
-	"edgelb-k8s/pkg/lb/messages"
-	"edgelb-k8s/pkg/state"
+	"github.com/mesosphere/edgelb-k8s/pkg/lb/config"
+	"github.com/mesosphere/edgelb-k8s/pkg/lb/messages"
+	"github.com/mesosphere/edgelb-k8s/pkg/state"
 
 	// RxGo
 	"github.com/reactivex/rxgo/iterable"

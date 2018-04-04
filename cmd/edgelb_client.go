@@ -16,8 +16,8 @@ import (
 	"github.com/mesosphere/dcos-commons/cli/config"
 
 	// Edge-lb dependencies
-	edgelbOperations "github.com/mesosphere/dcos-edge-lb/apiserver/client/operations"
-	"github.com/mesosphere/dcos-edge-lb/apiserver/dcos"
+	edgelbOperations "github.com/mesosphere/dcos-edge-lb/client/operations"
+	"github.com/mesosphere/dcos-edge-lb/dcos"
 	"github.com/mesosphere/dcos-edge-lb/apiserver/util"
 	edgelb "github.com/mesosphere/dcos-edge-lb/framework/edgelb/cli/dcos-edgelb/client"
 )

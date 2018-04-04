@@ -25,13 +25,14 @@ import (
 	sdkConfig "github.com/mesosphere/dcos-commons/cli/config"
 
 	// Edge-lb dependencies
-	"edgelb-k8s/pkg/lb/config"
-	"edgelb-k8s/pkg/lb/messages"
-	edgelbOperations "github.com/mesosphere/dcos-edge-lb/apiserver/client/operations"
-	"github.com/mesosphere/dcos-edge-lb/apiserver/dcos"
-	"github.com/mesosphere/dcos-edge-lb/apiserver/models"
+	edgelbOperations "github.com/mesosphere/dcos-edge-lb/client/operations"
+	"github.com/mesosphere/dcos-edge-lb/dcos"
+	"github.com/mesosphere/dcos-edge-lb/models"
 	"github.com/mesosphere/dcos-edge-lb/apiserver/util"
 	edgelbClient "github.com/mesosphere/dcos-edge-lb/framework/edgelb/cli/dcos-edgelb/client"
+
+	"github.com/mesosphere/edgelb-k8s/pkg/lb/config"
+	"github.com/mesosphere/edgelb-k8s/pkg/lb/messages"
 )
 
 // A client for `dcos-edge-lb` that implements the `lb.LoadBalancerBackend` interface.

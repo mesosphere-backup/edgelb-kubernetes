@@ -21,8 +21,8 @@ import (
 	"path/filepath"
 
 	// Edgelb-k8s
-	"edgelb-k8s/pkg/ingress"
-	"edgelb-k8s/pkg/lb/edgelb"
+	"github.com/mesosphere/edgelb-k8s/pkg/ingress"
+	"github.com/mesosphere/edgelb-k8s/pkg/lb/edgelb"
 
 	// Actor
 	"github.com/AsynkronIT/protoactor-go/actor"
