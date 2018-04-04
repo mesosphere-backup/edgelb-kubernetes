@@ -1,8 +1,0 @@
-_build
-.edgelb-pool-pushed
-.edgelb-pushed
-.edgelb-built
-.edgelb-pool-built
-tools/__pycache__/
-# this reference data is not source, so ignore
-edgelb/cli/dcos-edgelb/commands/reference_bindata.go

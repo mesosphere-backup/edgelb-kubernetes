@@ -1,5 +1,0 @@
-{
-  "address": ["172.17.0.4:443"],
-  "dns": ["edgelb-pool-0-server.dcos-edgelbpoolstestpool.autoip.dcos.thisdcos.directory:443"]
-}
-
