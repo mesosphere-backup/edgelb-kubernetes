@@ -87,8 +87,7 @@ func main() {
 	}
 
 	// Initialize Edge-LB.
-	// NOTE: You need to expose the DC/OS credentials for `edge-lb` as a base64 secret at the path `/dcos/secrets/edge-lb-secret.json`
-	edgelbBackend, err := edgelb.New("edgelb", "https://leader.mesos", "/dcos/secrets/edge-lb-secret.json")
+	edgelbBackend, err := edgelb.New()
 	if err != nil {
 		panic(err.Error())
 	}

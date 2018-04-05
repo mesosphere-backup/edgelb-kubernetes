@@ -22,13 +22,5 @@ ignored = ["github.com/Sirupsen/logrus"]
   revision = "kubernetes-1.10.0"
 
 [[constraint]]
-  name = "github.com/dcos/dcos-go"
-  revision = "master"
-
-[[constraint]]
-  name = "github.com/mesosphere/dcos-commons"
-  revision = "0.42.0"
-
-[[constraint]]
   name = "github.com/mesosphere/dcos-edge-lb"
-  branch = "ack/https-only"
+  revision = "6dda6613635a600cd7b6471784dbab9d04d805b0" # PR 130

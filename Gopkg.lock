@@ -15,12 +15,6 @@
   revision = "b2f4eeb36dbdab09b044249f9fc64f844ff07dba"
 
 [[projects]]
-  name = "github.com/BurntSushi/toml"
-  packages = ["."]
-  revision = "b26d9c308763d68093482582cea63d69be07a0f0"
-  version = "v0.3.0"
-
-[[projects]]
   name = "github.com/PuerkitoBio/purell"
   packages = ["."]
   revision = "0bcb03f4b4d0a9428594752bd2a3b9aa0a9d4bd4"
@@ -51,9 +45,10 @@
   version = "v1.1.0"
 
 [[projects]]
+  branch = "master"
   name = "github.com/dcos/dcos-go"
   packages = ["dcos/http/transport"]
-  revision = "master"
+  revision = "0245b80f4b9e2cf772243f14628a5a80b3ff0311"
 
 [[projects]]
   name = "github.com/emirpasic/gods"
@@ -129,7 +124,7 @@
   branch = "master"
   name = "github.com/go-openapi/strfmt"
   packages = ["."]
-  revision = "6ba31556a6c60db8615afb9d8eddae7aae15eb48"
+  revision = "257eae87ae3c3ade55160a4e338e1ca125314810"
 
 [[projects]]
   branch = "master"
@@ -206,8 +201,8 @@
 [[projects]]
   name = "github.com/imdario/mergo"
   packages = ["."]
-  revision = "33882c6bfe701aca0ff1472aa8b4ebd6135a560d"
-  version = "v0.3.3"
+  revision = "9d5f1277e9a8ed20c3684bda8fde67c05628518c"
+  version = "v0.3.4"
 
 [[projects]]
   name = "github.com/json-iterator/go"
@@ -226,26 +221,15 @@
   revision = "8b799c424f57fa123fc63a99d6383bc6e4c02578"
 
 [[projects]]
-  name = "github.com/mesosphere/dcos-commons"
-  packages = [
-    "cli/client",
-    "cli/config"
-  ]
-  revision = "0.42.0"
-
-[[projects]]
-  branch = "ack/https-only"
   name = "github.com/mesosphere/dcos-edge-lb"
   packages = [
-    "apiserver/util",
     "client",
     "client/operations",
     "dcos",
-    "framework/edgelb/cli/dcos-edgelb/client",
     "logging",
     "models"
   ]
-  revision = "aa203282859701981928f76a9faba931a2cac9c4"
+  revision = "6dda6613635a600cd7b6471784dbab9d04d805b0"
 
 [[projects]]
   branch = "master"
@@ -313,7 +297,7 @@
     "idna",
     "lex/httplex"
   ]
-  revision = "b68f30494add4df6bd8ef5e82803f308e7f7c59c"
+  revision = "b3c676e531a6dc479fa1b35ac961c13f5e2b4d2e"
 
 [[projects]]
   branch = "master"
@@ -322,7 +306,7 @@
     "unix",
     "windows"
   ]
-  revision = "f67933eaf9e2f750f58a234209a11ebc1107be38"
+  revision = "1d206c9fa8975fb4cf00df1dc8bf3283dc24ba0e"
 
 [[projects]]
   name = "golang.org/x/text"
@@ -588,6 +572,6 @@
 [solve-meta]
   analyzer-name = "dep"
   analyzer-version = 1
-  inputs-digest = "2d34a02ca6c6cf3418bcddde9d108a09328d3a406485498a1a1866fce4c269a2"
+  inputs-digest = "f24c816037e065692ece5cb492d10eaf48a11da975fc2dcd0dc9ae206e95ae97"
   solver-name = "gps-cdcl"
   solver-version = 1

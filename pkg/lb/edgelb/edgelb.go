@@ -14,35 +14,17 @@
 package edgelb
 
 import (
-	"crypto/tls"
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
-	"log"
 	"net"
-	"net/http"
 	"strconv"
-	"strings"
-	"time"
 
-	// Actor
 	"github.com/AsynkronIT/protoactor-go/actor"
+	log "github.com/Sirupsen/logrus"
 
-	//logging library
-	"github.com/Sirupsen/logrus"
-
-	// DC/OS dependencies
-	"github.com/dcos/dcos-go/dcos/http/transport"
-	sdkClient "github.com/mesosphere/dcos-commons/cli/client"
-	sdkConfig "github.com/mesosphere/dcos-commons/cli/config"
-
-	// Edge-lb dependencies
 	edgelbOperations "github.com/mesosphere/dcos-edge-lb/client/operations"
 	"github.com/mesosphere/dcos-edge-lb/dcos"
 	"github.com/mesosphere/dcos-edge-lb/models"
-	"github.com/mesosphere/dcos-edge-lb/apiserver/util"
-	edgelbClient "github.com/mesosphere/dcos-edge-lb/framework/edgelb/cli/dcos-edgelb/client"
 
 	"github.com/mesosphere/edgelb-kubernetes/pkg/lb/config"
 	"github.com/mesosphere/edgelb-kubernetes/pkg/lb/messages"
@@ -55,138 +37,35 @@ type EdgeLB struct {
 	backends       map[string]*models.V2Backend                      // Keep track of all the backends that got added to the pool.
 	ingress        map[string]*models.V2Frontend                     // Keep track of the different frontend that this pool exposes.
 	defaultIngress *models.V2Frontend
-	mkClient       func() (*edgelbOperations.Client, error)
+	mkClient       func() (*dcos.APIServerClient, error)
 }
 
-// hasContentTypes returns true if any item in cts is included in resp, else returns false
-func hasContentTypes(resp *http.Response, cts []string) bool {
-	respCt := resp.Header.Get("Content-Type")
-	if respCt == "" {
-		respCt = "application/octet-stream"
-	}
-	for _, ct := range cts {
-		if strings.Contains(respCt, ct) {
-			return true
-		}
-	}
-	return false
-}
-
-// checkHTTPResponse wraps sdk's CheckHTTPResponse with content-type check
-func checkHTTPResponse(resp *http.Response) (*http.Response, error) {
-	// XXX: Need a better indicator for if a response is coming from edgelb or adminrouter
-	adminRouterContentTypes := []string{
-		"text/html",                // adminrouter auth
-		"application/octet-stream", // adminrouter service unavailable
-	}
-	if hasContentTypes(resp, adminRouterContentTypes) {
-		if _, err := sdkClient.CheckHTTPResponse(resp); err != nil {
-			return nil, err
-		}
-	}
-	return resp, nil
-}
-
-type EdgeLBRoundTripper struct {
-	rt http.RoundTripper
-}
-
-func (edgelbRT *EdgeLBRoundTripper) RoundTrip(req *http.Request) (resp *http.Response, err error) {
-	resp, err = edgelbRT.rt.RoundTrip(req)
-	log.Printf("Finished a round trip to edge-lb")
-
-	if err == nil {
-		log.Printf("Checking response from edge-lb")
-		return checkHTTPResponse(resp)
-	} else {
-		log.Printf("Edge LB round tripper errored out: %s", err)
-	}
-
-	return
-}
-
-func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
-	// Setting up the global service name and DC/OS URL.
-	sdkConfig.ServiceName = serviceName
-	sdkConfig.DcosURL = dcosURL
-
-	logger := util.Logger
-	logger.SetLevel(logrus.DebugLevel)
-
-	// Read the creds from the secret store.
-	dat, err := ioutil.ReadFile(secrets)
+func New() (*EdgeLB, error) {
+	// TODO rework auth logic to support open
+	mkDcosClient, err := dcos.MakeClientFn("DCOS_SERVICE_ACCOUNT_CREDENTIAL", "leader.mesos", "https")
 	if err != nil {
-		err = errors.New(fmt.Sprintf("Unable to get DC/OS service account credentials:%s", err))
-		return
+		log.Fatalf("error making dcos client: %s", err)
 	}
-
-	dcosCredsStr := string(dat)
-	log.Printf("Retrieved the following encoded DC/OS credentials: %s", dcosCredsStr)
-
-	// Decode the DC/OS service account credentials from the JSON
-	dcosCreds := &dcos.AuthCreds{}
-	if err = json.Unmarshal([]byte(dcosCredsStr), dcosCreds); err != nil {
-		err = errors.New(fmt.Sprintf("Failed to decode dcos auth credentials. Error: %s", err))
-		return
-	}
-
-	log.Printf("Decoded `dcosCreds`: %v", dcosCreds)
-
-	// Setup the client configuration.
-	httpClient := &http.Client{
-		Transport: &http.Transport{},
-	}
-
-	// Setup HTTPS client.
-	//
-	// NOTE: We are setting the HTTPS client to authenticate the server against
-	// a CA. This might be required for making this working DC/OS EE strict
-	// mode.
-	tlsConfig := &tls.Config{}
-	tlsConfig.InsecureSkipVerify = true
-	httpClient.Transport = &http.Transport{
-		TLSClientConfig: tlsConfig,
-	}
-
-	// Set up the HTTP round-tripper to use the DC/OS credentials.
-	creds := transport.OptionCredentials(dcosCreds.UID, dcosCreds.Secret, dcosCreds.LoginEndpoint)
-	expire := transport.OptionTokenExpire(time.Minute * 10)
-	rt, err := transport.NewRoundTripper(httpClient.Transport, creds, expire)
-	if err != nil {
-		err = errors.New(fmt.Sprintf("Failed to create HTTP client with configured service account: %s", err))
-		return
-	}
-
-	mkClient := func() (elbOpsClient *edgelbOperations.Client, err error) {
-		elbOpsClient, err = edgelbClient.NewWithRoundTripper(&EdgeLBRoundTripper{rt: rt})
-		return
-	}
+	mkClient := dcos.MakeAPIServerClientFn(mkDcosClient)
 
 	// Setup the closure for creating edge-lb clients.
-	elb = &EdgeLB{
+	edgeLB := &EdgeLB{
 		mkClient:  mkClient,
 		frontends: make(map[string]*models.V2FrontendLinkBackendMapItems0),
 		backends:  make(map[string]*models.V2Backend),
-		ingress:   make(map[string]*models.V2Frontend)}
-
-	// During initialization we want to make sure that this backend to talk to
-	// the Edge-LB API server. We will also need to make sure that a k8s pool
-	// exist on the Edge-lb, for this k8s cluster. If a k8s pool does not exist
-	// we need to create it during initialization.
-
-	// Initiate a ping to the edge-lb server.
-	params := edgelbOperations.NewPingParams()
-
-	elbClient, err := elb.mkClient()
-	if err != nil {
-		err = errors.New(fmt.Sprintf("Failed to create an Edge-LB client to initiate a ping: %s", err))
-		return
+		ingress:   make(map[string]*models.V2Frontend),
 	}
 
-	resp, err := elbClient.Ping(params)
+	client, err := edgeLB.mkClient();
+	if err != nil {
+		return nil, err
+	}
+
+	params := edgelbOperations.NewPingParams()
+	resp, err := client.Operations.Ping(params);
 	if err != nil {
 		err = errors.New(fmt.Sprintf("Failed to get a ping response from Edge-LB:%s", err))
-		return
+		return nil, err
 	}
 
 	log.Printf("Edge-lb responded:%s", resp.Payload)
@@ -200,11 +79,11 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 	// ingress resources that exist in the k8s API server, with which we will
 	// end up generating a new config and will simply over-write the existing
 	// configuration for the k8s pool in the API server.
-	k8sPool := elb.newK8sPool()
+	k8sPool := edgeLB.newK8sPool()
 
 	poolParams := edgelbOperations.NewGetPoolContainerParams().
 		WithName("k8s")
-	_, err = elbClient.GetPoolContainer(poolParams)
+	_, err = client.Operations.GetPoolContainer(poolParams)
 	if err == nil {
 		log.Printf("Found edge-lb pool for k8s: %v", resp.Payload)
 		k8sExists = true
@@ -216,16 +95,16 @@ func New(serviceName, dcosURL, secrets string) (elb *EdgeLB, err error) {
 		params := edgelbOperations.NewV2CreatePoolParams().
 			WithPool(k8sPool.V2)
 
-		_, err = elbClient.V2CreatePool(params)
+		_, err = client.Operations.V2CreatePool(params)
 
 		if err != nil {
 			err = errors.New(fmt.Sprintf("Failed to create k8s Edge-LB pool:%s", err))
-			return
+			return nil, err
 		}
 		log.Printf("Successfully created k8s pool.")
 	}
 
-	return
+	return edgeLB, nil
 }
 
 func getBackendID(vhost *config.VHost, route *config.Route) string {
@@ -442,7 +321,7 @@ func (elb *EdgeLB) sync() {
 		WithName(poolContainer.V2.Name).
 		WithPool(poolContainer.V2)
 
-	_, err = elbClient.V2UpdatePool(params)
+	_, err = elbClient.Operations.V2UpdatePool(params)
 
 	if err != nil {
 		log.Fatalf("Unable to update the edge-lb pool during 'sync':%s", err)
